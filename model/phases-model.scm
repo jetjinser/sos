@@ -8,6 +8,7 @@
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-1)
   #:use-module (core-model)
+  #:use-module (ssv emit)
   #:export (ph-stx-add ph-stx-flip ph-stx-prune
             update-ctx at-phase
             ph-store-bind ph-resolve
@@ -36,29 +37,44 @@
 ;;; ----------------------------------------
 ;;; Syntax object operations (phase-aware)
 
-(define (ph-stx-add ph stx scp)
+(define (%ph-stx-add ph stx scp)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (ph-stx-add ph s scp)) form)
+                  (map (lambda (s) (%ph-stx-add ph s scp)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
                           (scps-union (list scp) (at-phase (stx-ctx stx) ph))))))
 
-(define (ph-stx-flip ph stx scp)
+(define (ph-stx-add ph stx scp)
+  (let ((r (%ph-stx-add ph stx scp)))
+    (emit-op 'stx-add scp stx r)
+    r))
+
+(define (%ph-stx-flip ph stx scp)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (ph-stx-flip ph s scp)) form)
+                  (map (lambda (s) (%ph-stx-flip ph s scp)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
                           (scps-addremove scp (at-phase (stx-ctx stx) ph))))))
 
-(define (ph-stx-prune ph stx scps-p)
+(define (ph-stx-flip ph stx scp)
+  (let ((r (%ph-stx-flip ph stx scp)))
+    (emit-op 'stx-flip scp stx r)
+    r))
+
+(define (%ph-stx-prune ph stx scps-p)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (ph-stx-prune ph s scps-p)) form)
+                  (map (lambda (s) (%ph-stx-prune ph s scps-p)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
                           (scps-subtract (at-phase (stx-ctx stx) ph) scps-p)))))
+
+(define (ph-stx-prune ph stx scps-p)
+  (let ((r (%ph-stx-prune ph stx scps-p)))
+    (emit-op 'stx-prune scps-p stx r)
+    r))
 
 ;;; ----------------------------------------
 ;;; Store operations (phase-aware)
@@ -68,6 +84,7 @@
          (scopes (at-phase (stx-ctx id) ph))
          (binds (store-binds store))
          (existing (assq sym binds)))
+    (emit-op 'bind sym scopes name)
     (if existing
         (make-store (store-counter store)
                     (map (lambda (b)
@@ -144,18 +161,23 @@
                  (env-new (env-extend env nam-new (cons 'tvar id-new)))
                  (body-added (ph-stx-add ph body scp-new))
                  (er (ph-expand ph body-added env-new
-                                (scps-union (list scp-new) scps-p) s3)))
-            (cons (make-stx (list first id-new (car er)) (stx-ctx stx))
-                  (cdr er))))
+                                (scps-union (list scp-new) scps-p) s3))
+                 (result (make-stx (list first id-new (car er)) (stx-ctx stx))))
+            (emit-rule 'lambda stx result (cdr er) env
+                       (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
+            (cons result (cdr er))))
          ;; quote
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'quote))
+          (emit-rule 'quote stx stx store env (list (cons 'phase ph)))
           (cons stx store))
          ;; syntax
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'syntax))
-          (let ((pruned (ph-stx-prune ph (cadr form) scps-p)))
-            (cons (make-stx (list first pruned) (stx-ctx stx)) store)))
+          (let* ((pruned (ph-stx-prune ph (cadr form) scps-p))
+                 (result (make-stx (list first pruned) (stx-ctx stx))))
+            (emit-rule 'syntax stx result store env (list (cons 'phase ph)))
+            (cons result store)))
          ;; let-syntax
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'let-syntax))
@@ -175,9 +197,12 @@
                  (s4 (cdr rhs-er))
                  (transformer (eval-ast (ph-parse (+ ph 1) stx-exp s4)))
                  (env-new (env-extend env nam-new transformer))
-                 (body-added (ph-stx-add ph body scp-new))
-                 (scps-p2 (scps-union (list scp-new) scps-p)))
-            (ph-expand ph body-added env-new scps-p2 s4)))
+                  (body-added (ph-stx-add ph body scp-new))
+                  (scps-p2 (scps-union (list scp-new) scps-p))
+                  (er (ph-expand ph body-added env-new scps-p2 s4)))
+            (emit-rule 'let-syntax stx (car er) (cdr er) env
+                       (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
+            er))
          ;; macro invocation
          ((and (stx? first)
                (not (eq? (env-lookup env (ph-resolve ph first store))
@@ -192,19 +217,29 @@
                  (stx-added (ph-stx-add ph stx scp-u))
                  (stx-flipped (ph-stx-flip ph stx-added scp-i))
                  (result (eval-ast `(app ,val ,stx-flipped)))
-                 (result-flipped (ph-stx-flip ph result scp-i)))
-            (ph-expand ph result-flipped env
-                       (scps-union (list scp-u) scps-p) s2)))
-         ;; application
-         (else
-          (let ((er (ph-expand* ph '() form env scps-p store)))
-            (cons (make-stx (car er) (stx-ctx stx)) (cdr er)))))))
+                  (result-flipped (ph-stx-flip ph result scp-i))
+                  (er (ph-expand ph result-flipped env
+                                 (scps-union (list scp-u) scps-p) s2)))
+            (emit-rule 'macro-invoke stx (car er) (cdr er) env
+                       (list (cons 'phase ph) (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
+            er))
+          ;; application
+          (else
+           (let* ((er (ph-expand* ph '() form env scps-p store))
+                  (result (make-stx (car er) (stx-ctx stx))))
+             (emit-rule 'app stx result (cdr er) env (list (cons 'phase ph)))
+             (cons result (cdr er)))))))
      ;; identifier
      ((stx? stx)
       (let ((transform (env-lookup env (ph-resolve ph stx store))))
         (if (and (pair? transform) (eq? (car transform) 'tvar))
-            (cons (cdr transform) store)
-            (cons stx store))))
+            (begin
+              (emit-rule 'id stx (cdr transform) store env
+                         (list (cons 'phase ph) (cons 'tvar (cdr transform))))
+              (cons (cdr transform) store))
+            (begin
+              (emit-rule 'id stx stx store env (list (cons 'phase ph)))
+              (cons stx store)))))
      (else (cons stx store)))))
 
 (define (ph-expand* ph done todo env scps-p store)

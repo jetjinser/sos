@@ -36,7 +36,11 @@
               packages = with pkgs; [
                 guile
                 guile-hoot
+                guile-fibers
+                guile-websocket
+                guile-gnutls
                 guile-json
+                nodejs-slim
                 self'.packages.blue
               ];
               env =

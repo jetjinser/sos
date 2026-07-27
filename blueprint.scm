@@ -6,6 +6,7 @@
   (blue types variable)
   (blueprint install)
   (blueprint check-wasm)
+  (blueprint serve)
   (blueprint buildables)
   (blueprint tests))
 
@@ -24,7 +25,7 @@
 
 (blueprint
   (configuration ssv-configuration)
-  (buildables (append ssv-modules (list model-wasm-tests)))
+  (buildables (append ssv-modules (list model-wasm-tests app-wasm) web-static))
   (testables ssv-tests)
   (commands
-    (list install-command check-wasm-command)))
+    (list install-command check-wasm-command serve-command)))

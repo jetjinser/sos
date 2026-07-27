@@ -1,8 +1,9 @@
 (define-module (blueprint buildables)
   #:use-module (blue build)
+  #:use-module (blue stencils copy-file)
   #:use-module (blue stencils guile)
   #:use-module (blueprint stencils hoot)
-  #:export (ssv-modules model-wasm-tests))
+  #:export (ssv-modules model-wasm-tests app-wasm web-static))
 
 (define +ssv-sources+
   '())
@@ -35,3 +36,35 @@
     (outputs "model-tests.wasm")
     (load-paths #%~(list #%?srcdir (string-append #%?srcdir "/model")))
     (bundle? #f)))
+
+;;; Dependencies of the web application's Wasm module (for rebuild tracking).
+(define +app-deps+
+  '("ssv/trace.scm"
+    "ssv/serialize.scm"
+    "model/core-model.scm"
+    "model/phases-model.scm"
+    "model/local-model.scm"
+    "model/defs-model.scm"))
+
+;;; The web application: main.scm compiled to Wasm, with the Hoot web runtime
+;;; bundled alongside (web/app.wasm + reflect.js/wasm + wtf8.wasm).
+(define app-wasm
+  (hoot-wasm
+    (inputs "ssv/main.scm")
+    (requirements +app-deps+)
+    (outputs "web/app.wasm")
+    (load-paths #%~(list #%?srcdir (string-append #%?srcdir "/model")))
+    (bundle? #t)))
+
+;;; Static front-end files copied next to app.wasm into the served directory.
+(define +web-static+
+  '("web/index.html"
+    "web/src/main.js"
+    "web/src/wasm.js"))
+
+(define web-static
+  (map (λ (file)
+         (copy-file
+           (inputs file)
+           (outputs file)))
+       +web-static+))

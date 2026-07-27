@@ -6,6 +6,7 @@
 (define-module (core-model)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-1)
+  #:use-module (ssv emit)
   #:export (make-stx stx? stx-form stx-ctx
             make-store store? store-counter store-binds store-boxes store-def-envs
             scps-union scps-subtract scps-addremove scps-subset? biggest-subset
@@ -73,19 +74,29 @@
 ;;; ----------------------------------------
 ;;; Syntax object operations
 
-(define (stx-add stx scp)
+(define (%stx-add stx scp)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (stx-add s scp)) form)
+                  (map (lambda (s) (%stx-add s scp)) form)
                   form)
               (scps-union (list scp) (stx-ctx stx)))))
 
-(define (stx-flip stx scp)
+(define (stx-add stx scp)
+  (let ((r (%stx-add stx scp)))
+    (emit-op 'stx-add scp stx r)
+    r))
+
+(define (%stx-flip stx scp)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (stx-flip s scp)) form)
+                  (map (lambda (s) (%stx-flip s scp)) form)
                   form)
               (scps-addremove scp (stx-ctx stx)))))
+
+(define (stx-flip stx scp)
+  (let ((r (%stx-flip stx scp)))
+    (emit-op 'stx-flip scp stx r)
+    r))
 
 (define (stx-strip stx)
   (let ((form (stx-form stx)))
@@ -105,6 +116,7 @@
          (scopes (stx-ctx id))
          (binds (store-binds store))
          (existing (assq sym binds)))
+    (emit-op 'bind sym scopes name)
     (if existing
         (make-store (store-counter store)
                     (map (lambda (b)
@@ -154,6 +166,7 @@
                                (symbol->string (stx-form id))
                                ":"
                                (number->string (store-counter store))))))
+    (emit-op 'alloc-name name)
     (cons name (make-store (+ (store-counter store) 1)
                            (store-binds store)
                            (store-boxes store)
@@ -164,6 +177,7 @@
                                (symbol->string (stx-form id))
                                ":"
                                (number->string (store-counter store))))))
+    (emit-op 'alloc-scope name)
     (cons name (make-store (+ (store-counter store) 1)
                            (store-binds store)
                            (store-boxes store)
@@ -296,16 +310,20 @@
                  (s3 (store-bind s2 id-new nam-new))
                  (env-new (env-extend env nam-new (cons 'tvar id-new)))
                  (body-added (stx-add body scp-new))
-                 (er (expand body-added env-new s3)))
-            (cons (make-stx (list first id-new (car er)) (stx-ctx stx))
-                  (cdr er))))
+                 (er (expand body-added env-new s3))
+                 (result (make-stx (list first id-new (car er)) (stx-ctx stx))))
+            (emit-rule 'lambda stx result (cdr er) env
+                       (list (cons 'name nam-new) (cons 'scope scp-new)))
+            (cons result (cdr er))))
          ;; quote
          ((and (stx? first)
                (eq? (resolve first store) 'quote))
+          (emit-rule 'quote stx stx store env '())
           (cons stx store))
          ;; syntax
          ((and (stx? first)
                (eq? (resolve first store) 'syntax))
+          (emit-rule 'syntax stx stx store env '())
           (cons stx store))
          ;; let-syntax
          ((and (stx? first)
@@ -323,8 +341,11 @@
                  (s3 (store-bind s2 id-new nam-new))
                  (transformer (eval-ast (parse rhs s3)))
                  (env-new (env-extend env nam-new transformer))
-                 (body-added (stx-add body scp-new)))
-            (expand body-added env-new s3)))
+                 (body-added (stx-add body scp-new))
+                 (er (expand body-added env-new s3)))
+            (emit-rule 'let-syntax stx (car er) (cdr er) env
+                       (list (cons 'name nam-new) (cons 'scope scp-new)))
+            er))
          ;; macro invocation
          ((and (stx? first)
                (not (eq? (env-lookup env (resolve first store))
@@ -339,18 +360,28 @@
                  (stx-added (stx-add stx scp-u))
                  (stx-flipped (stx-flip stx-added scp-i))
                  (result (eval-ast `(app ,val ,stx-flipped)))
-                 (result-flipped (stx-flip result scp-i)))
-            (expand result-flipped env s2)))
-         ;; application
-         (else
-          (let ((er (expand* '() form env store)))
-            (cons (make-stx (car er) (stx-ctx stx)) (cdr er)))))))
+                 (result-flipped (stx-flip result scp-i))
+                 (er (expand result-flipped env s2)))
+            (emit-rule 'macro-invoke stx (car er) (cdr er) env
+                       (list (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
+            er))
+          ;; application
+          (else
+           (let* ((er (expand* '() form env store))
+                  (result (make-stx (car er) (stx-ctx stx))))
+             (emit-rule 'app stx result (cdr er) env '())
+             (cons result (cdr er)))))))
      ;; identifier
      ((stx? stx)
       (let ((transform (env-lookup env (resolve stx store))))
         (if (and (pair? transform) (eq? (car transform) 'tvar))
-            (cons (cdr transform) store)
-            (cons stx store))))
+            (begin
+              (emit-rule 'id stx (cdr transform) store env
+                         (list (cons 'tvar (cdr transform))))
+              (cons (cdr transform) store))
+            (begin
+              (emit-rule 'id stx stx store env '())
+              (cons stx store)))))
      (else (cons stx store)))))
 
 (define (expand* done todo env store)
