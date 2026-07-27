@@ -6,15 +6,18 @@
 
 (define test-options
   #%~(list
-       #:load-path (list #%?srcdir)
+       #:load-path (list #%?srcdir (string-append #%?srcdir "/model"))
        #:load-compiled-path (list #%?builddir)
-       #:cov-filter-globs '("ssv/*")
+       #:cov-filter-globs '("model/*" "ssv/*")
        #:enable-coverage? (not (getenv "SSV_TESTS_DISABLE_COVERAGE"))
        #:time-limit (or (and=> (getenv "SSV_TESTS_TIME_LIMIT") string->number)
                         60)))
 
 (define +test-sources+
-  '("tests/unit/ssv/core.scm"))
+  '("tests/unit/model/core.scm"
+    "tests/unit/model/phases.scm"
+    "tests/unit/model/local.scm"
+    "tests/unit/model/defs.scm"))
 
 (define ssv-tests
   (map
