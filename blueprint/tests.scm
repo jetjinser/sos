@@ -17,7 +17,8 @@
   '("tests/unit/model/core.scm"
     "tests/unit/model/phases.scm"
     "tests/unit/model/local.scm"
-    "tests/unit/model/defs.scm"))
+    "tests/unit/model/defs.scm"
+    "tests/unit/ssv/serialize.scm"))
 
 (define ssv-tests
   (map

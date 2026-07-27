@@ -5,7 +5,7 @@
   #:export (ssv-modules model-wasm-tests))
 
 (define +ssv-sources+
-  '("ssv/core/L.scm"))
+  '())
 
 (define ssv-modules
   (map

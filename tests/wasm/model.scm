@@ -1,13 +1,7 @@
 ;;; tests/wasm/model.scm
-;;; Run the scope-set model test suites inside the Hoot WebAssembly VM.
-;;;
-;;; This is a Hoot main module (program syntax).  It is compiled to Wasm and
-;;; executed headlessly with:
-;;;   guild compile-wasm -L . -L model --run tests/wasm/model.scm
-;;;
-;;; The default Hoot VM prints the program's return values (not `display'
-;;; output), so on success we RETURN a summary, and on failure we raise an
-;;; error, which makes the VM exit with a non-zero status.
+;;; Run the model test suites inside the Hoot WebAssembly VM.  The VM prints a
+;;; program's return values rather than `display' output, so we return a summary
+;;; on success and raise an error on failure (non-zero exit).
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (use-modules (core-model)

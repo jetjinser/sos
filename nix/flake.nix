@@ -36,6 +36,7 @@
               packages = with pkgs; [
                 guile
                 guile-hoot
+                guile-json
                 self'.packages.blue
               ];
               env =

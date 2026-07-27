@@ -11,19 +11,8 @@
   #:use-module (srfi srfi-1)
   #:export (<hoot-wasm> hoot-wasm hoot-wasm?))
 
-;;; Compile a Guile Scheme program into a WebAssembly module using
-;;; `guild compile-wasm'.
-;;;
-;;; INPUTS: a single source file (the Hoot main module).
-;;;
-;;; OUTPUTS: a single `.wasm' file.
-;;;
-;;; LOAD-PATHS: list of directories passed to `guild compile-wasm -L'.
-;;; Entries are typically computations such as #%~#%?srcdir and are resolved
-;;; lazily by the slot getter.
-;;;
-;;; BUNDLE?: when true (the default), copy the Hoot web runtime (reflect.js,
-;;; reflect.wasm, wtf8.wasm) next to the output via `guild compile-wasm -b'.
+;;; Compile a Guile Scheme program to a WebAssembly module via
+;;; `guild compile-wasm', optionally bundling the Hoot web runtime alongside.
 (define-blue-class <hoot-wasm> (<buildable>)
   (load-paths
    #:getter hoot-load-paths
