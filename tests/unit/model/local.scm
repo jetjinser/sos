@@ -4,6 +4,7 @@
 
 (define-module (tests unit model local)
   #:use-module (srfi srfi-64)
+  #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (phases-model)
   #:use-module (local-model)
@@ -11,11 +12,10 @@
 
 (test-begin "model-local")
 
-;;; Σ* = (store scps-p scps-u); the store is the cadr of the result pair.
 (define (run input)
-  (let ((er (loc-expand 0 (as-syntax input) (primitives-env)
-                        (list (init-store) '() '()))))
-    (ph-parse 0 (car er) (cadr er))))
+  (receive (expanded s*) (loc-expand 0 (as-syntax input) (primitives-env)
+                                     (list (init-store) '() '()))
+    (ph-parse 0 expanded (car s*))))
 
 (test-assert "simple-macro"
   (term=? (run input-simple-macro) 2))

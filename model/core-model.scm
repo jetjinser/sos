@@ -4,9 +4,11 @@
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (core-model)
-  #:use-module (srfi srfi-9)
-  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-1)  ; list
+  #:use-module (srfi srfi-9)  ; record
+  #:use-module (srfi srfi-11) ; values
   #:use-module (ice-9 match)
+  #:use-module (ice-9 receive)
   #:use-module (ssv emit)
   #:export (make-stx stx? stx-form stx-ctx
             make-store store? store-counter store-binds store-boxes store-def-envs
@@ -168,10 +170,10 @@
                                ":"
                                (number->string (store-counter store))))))
     (emit-op 'alloc-name name)
-    (cons name (make-store (+ (store-counter store) 1)
-                           (store-binds store)
-                           (store-boxes store)
-                           (store-def-envs store)))))
+    (values name (make-store (+ (store-counter store) 1)
+                             (store-binds store)
+                             (store-boxes store)
+                             (store-def-envs store)))))
 
 (define (alloc-scope id store)
   (let ((name (string->symbol (string-append
@@ -179,10 +181,10 @@
                                ":"
                                (number->string (store-counter store))))))
     (emit-op 'alloc-scope name)
-    (cons name (make-store (+ (store-counter store) 1)
-                           (store-binds store)
-                           (store-boxes store)
-                           (store-def-envs store)))))
+    (values name (make-store (+ (store-counter store) 1)
+                             (store-binds store)
+                             (store-boxes store)
+                             (store-def-envs store)))))
 
 ;;; ----------------------------------------
 ;;; Primitives (δ)
@@ -303,69 +305,57 @@
     ;;; compound form
     ;; lambda
     [($ <stx> ((? (stx-is? 'lambda) lam) id-arg body))
-     (let* ([an         (alloc-name id-arg store)]
-            [nam-new    (car an)]
-            [s1         (cdr an)]
-            [as         (alloc-scope id-arg s1)]
-            [scp-new    (car as)]
-            [s2         (cdr as)]
-            [id-new     (stx-add id-arg scp-new)]
-            [s3         (store-bind s2 id-new nam-new)]
-            [env-new    (env-extend env nam-new (cons 'tvar id-new))]
-            [body-added (stx-add body scp-new)]
-            [er         (expand body-added env-new s3)]
-            [result     (make-stx (list lam id-new (car er)) (stx-ctx stx))])
-       (emit-rule 'lambda stx result (cdr er) env
-                  (list (cons 'name nam-new) (cons 'scope scp-new)))
-       (cons result (cdr er)))]
+     (let*-values ([(nam-new s1)  (alloc-name  id-arg store)]
+                   [(scp-new s2)  (alloc-scope id-arg s1)]
+                   [(id-new)      (stx-add id-arg scp-new)]
+                   [(s3)          (store-bind s2 id-new nam-new)]
+                   [(env-new)     (env-extend env nam-new (cons 'tvar id-new))]
+                   [(body-added)  (stx-add body scp-new)]
+                   [(body-exp s4) (expand body-added env-new s3)])
+       (let ([result (make-stx (list lam id-new body-exp) (stx-ctx stx))])
+         (emit-rule 'lambda stx result s4 env
+                    (list (cons 'name nam-new) (cons 'scope scp-new)))
+         (values result s4)))]
     ;; quote
     [($ <stx> ((? (stx-is? 'quote) quo) . rest))
      (emit-rule 'quote stx stx store env '())
-     (cons stx store)]
+     (values stx store)]
     ;; syntax
     [($ <stx> ((? (stx-is? 'syntax) syn) . rest))
      (emit-rule 'syntax stx stx store env '())
-     (cons stx store)]
+     (values stx store)]
     ;; let-syntax
     [($ <stx> ((? (stx-is? 'let-syntax) ls) id rhs body))
-     (let* ([an          (alloc-name id store)]
-            [nam-new     (car an)]
-            [s1          (cdr an)]
-            [as          (alloc-scope id s1)]
-            [scp-new     (car as)]
-            [s2          (cdr as)]
-            [id-new      (stx-add id scp-new)]
-            [s3          (store-bind s2 id-new nam-new)]
-            [transformer (eval-ast (parse rhs s3))]
-            [env-new     (env-extend env nam-new transformer)]
-            [body-added  (stx-add body scp-new)]
-            [er          (expand body-added env-new s3)])
-       (emit-rule 'let-syntax stx (car er) (cdr er) env
+     (let*-values ([(nam-new s1)  (alloc-name  id store)]
+                   [(scp-new s2)  (alloc-scope id s1)]
+                   [(id-new)      (stx-add id scp-new)]
+                   [(s3)          (store-bind s2 id-new nam-new)]
+                   [(transformer) (eval-ast (parse rhs s3))]
+                   [(env-new)     (env-extend env nam-new transformer)]
+                   [(body-added)  (stx-add body scp-new)]
+                   [(body-exp s4) (expand body-added env-new s3)])
+       (emit-rule 'let-syntax stx body-exp s4 env
                   (list (cons 'name nam-new) (cons 'scope scp-new)))
-       er)]
+       (values body-exp s4))]
     ;; macro invocation
     [($ <stx> ((? shadowed-stx? first) . rest))
-     (let* ([as1            (alloc-scope (make-stx 'a '()) store)]
-            [scp-u          (car as1)]
-            [s1             (cdr as1)]
-            [as2            (alloc-scope (make-stx 'a '()) s1)]
-            [scp-i          (car as2)]
-            [s2             (cdr as2)]
-            [val            (env-lookup env (resolve first store))]
-            [stx-added      (stx-add stx scp-u)]
-            [stx-flipped    (stx-flip stx-added scp-i)]
-            [result         (eval-ast `(app ,val ,stx-flipped))]
-            [result-flipped (stx-flip result scp-i)]
-            [er             (expand result-flipped env s2)])
-       (emit-rule 'macro-invoke stx (car er) (cdr er) env
+     (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '()) store)]
+                   [(scp-i s2)       (alloc-scope (make-stx 'a '()) s1)]
+                   [(val)            (env-lookup env (resolve first store))]
+                   [(stx-added)      (stx-add stx scp-u)]
+                   [(stx-flipped)    (stx-flip stx-added scp-i)]
+                   [(result)         (eval-ast `(app ,val ,stx-flipped))]
+                   [(result-flipped) (stx-flip result scp-i)]
+                   [(expanded s3)    (expand result-flipped env s2)])
+       (emit-rule 'macro-invoke stx expanded s3 env
                   (list (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
-       er)]
+       (values expanded s3))]
     ;; application
     [($ <stx> (and (first . rest) form) ctx)
-     (let* ([er     (expand* '() form env store)]
-            [result (make-stx (car er) ctx)])
-       (emit-rule 'app stx result (cdr er) env '())
-       (cons result (cdr er)))]
+     (let*-values ([(expanded s1) (expand* '() form env store)]
+                   [(result)      (make-stx expanded ctx)])
+       (emit-rule 'app stx result s1 env '())
+       (values result s1))]
     ;;; identifier
     [($ <stx> form ctx)
      (let ((transform (env-lookup env (resolve stx store))))
@@ -373,17 +363,17 @@
          (begin
            (emit-rule 'id stx (cdr transform) store env
                       (list (cons 'tvar (cdr transform))))
-           (cons (cdr transform) store))
+           (values (cdr transform) store))
          (begin
            (emit-rule 'id stx stx store env '())
-           (cons stx store))))]
-    [_ (cons stx store)]))
+           (values stx store))))]
+    [_ (values stx store)]))
 
 (define (expand* done todo env store)
   (if (null? todo)
-      (cons (reverse done) store)
-      (let ((er (expand (car todo) env store)))
-        (expand* (cons (car er) done) (cdr todo) env (cdr er)))))
+      (values (reverse done) store)
+      (receive (expanded s1) (expand (car todo) env store)
+        (expand* (cons expanded done) (cdr todo) env s1))))
 
 ;;; ----------------------------------------
 ;;; Helpers

@@ -5,6 +5,7 @@
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (ssv trace)
+  #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (phases-model)
   #:use-module (local-model)
@@ -32,22 +33,21 @@
          (let ([stx (as-syntax datum)])
            (case model
              [(core)
-              (let* ((er (expand stx (primitives-env) (init-store)))
-                     (expanded (car er)) (store (cdr er)))
+              (receive (expanded store) (expand stx (primitives-env) (init-store))
                 (trace-result model datum expanded store (parse expanded store)))]
              [(phases)
-              (let* ([er (ph-expand 0 stx (primitives-env) '() (init-store))]
-                     [expanded (car er)]
-                     [store (cdr er)])
+              (receive (expanded store) (ph-expand 0 stx (primitives-env) '() (init-store))
                 (trace-result model datum expanded store (ph-parse 0 expanded store)))]
              [(local)
-              (let* ((er (loc-expand 0 stx (primitives-env) (list (init-store) '() '())))
-                     (expanded (car er)) (store (cadr er)))
-                (trace-result model datum expanded store (ph-parse 0 expanded store)))]
+              (receive (expanded s*) (loc-expand 0 stx (primitives-env)
+                                                 (list (init-store) '() '()))
+                (let ((store (car s*)))
+                  (trace-result model datum expanded store (ph-parse 0 expanded store))))]
              [(defs)
-              (let* ((er (defs-expand 0 stx (primitives-env) (list (init-store) '() '())))
-                     (expanded (car er)) (store (cadr er)))
-                (trace-result model datum expanded store (ph-parse 0 expanded store)))]
+              (receive (expanded s*) (defs-expand 0 stx (primitives-env)
+                                                  (list (init-store) '() '()))
+                (let ((store (car s*)))
+                  (trace-result model datum expanded store (ph-parse 0 expanded store))))]
              [else (error "run-traced: unknown model" model)]))])
     (tracing-off!)
     result))

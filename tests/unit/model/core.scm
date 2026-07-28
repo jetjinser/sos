@@ -4,14 +4,15 @@
 
 (define-module (tests unit model core)
   #:use-module (srfi srfi-64)
+  #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (tests unit model harness))
 
 (test-begin "model-core")
 
 (define (run input)
-  (let ((er (expand (as-syntax input) (primitives-env) (init-store))))
-    (parse (car er) (cdr er))))
+  (receive (expanded store) (expand (as-syntax input) (primitives-env) (init-store))
+    (parse expanded store)))
 
 (test-assert "simple-macro"
   (term=? (run input-simple-macro) 2))

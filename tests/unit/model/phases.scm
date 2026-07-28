@@ -4,6 +4,7 @@
 
 (define-module (tests unit model phases)
   #:use-module (srfi srfi-64)
+  #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (phases-model)
   #:use-module (tests unit model harness))
@@ -11,8 +12,8 @@
 (test-begin "model-phases")
 
 (define (run input)
-  (let ((er (ph-expand 0 (as-syntax input) (primitives-env) '() (init-store))))
-    (ph-parse 0 (car er) (cdr er))))
+  (receive (expanded store) (ph-expand 0 (as-syntax input) (primitives-env) '() (init-store))
+    (ph-parse 0 expanded store)))
 
 (test-assert "simple-macro"
   (term=? (run input-simple-macro) 2))

@@ -4,30 +4,30 @@
 ;;; on success and raise an error on failure (non-zero exit).
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
-(use-modules (core-model)
+(use-modules (ice-9 receive)
+             (core-model)
              (phases-model)
              (local-model)
              (defs-model)
              (tests unit model harness))
 
 (define (core-run in)
-  (let ((er (expand (as-syntax in) (primitives-env) (init-store))))
-    (parse (car er) (cdr er))))
+  (receive (expanded store) (expand (as-syntax in) (primitives-env) (init-store))
+    (parse expanded store)))
 
 (define (phases-run in)
-  (let ((er (ph-expand 0 (as-syntax in) (primitives-env) '() (init-store))))
-    (ph-parse 0 (car er) (cdr er))))
+  (receive (expanded store) (ph-expand 0 (as-syntax in) (primitives-env) '() (init-store))
+    (ph-parse 0 expanded store)))
 
-;;; Σ* = (store scps-p scps-u); the store is the cadr of the result pair.
 (define (local-run in)
-  (let ((er (loc-expand 0 (as-syntax in) (primitives-env)
-                        (list (init-store) '() '()))))
-    (ph-parse 0 (car er) (cadr er))))
+  (receive (expanded s*) (loc-expand 0 (as-syntax in) (primitives-env)
+                                     (list (init-store) '() '()))
+    (ph-parse 0 expanded (car s*))))
 
 (define (defs-run in)
-  (let ((er (defs-expand 0 (as-syntax in) (primitives-env)
-                         (list (init-store) '() '()))))
-    (ph-parse 0 (car er) (cadr er))))
+  (receive (expanded s*) (defs-expand 0 (as-syntax in) (primitives-env)
+                                      (list (init-store) '() '()))
+    (ph-parse 0 expanded (car s*))))
 
 (define failed '())
 
