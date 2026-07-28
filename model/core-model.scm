@@ -6,6 +6,7 @@
 (define-module (core-model)
   #:use-module (srfi srfi-9)
   #:use-module (srfi srfi-1)
+  #:use-module (ice-9 match)
   #:use-module (ssv emit)
   #:export (make-stx stx? stx-form stx-ctx
             make-store store? store-counter store-binds store-boxes store-def-envs
@@ -289,100 +290,94 @@
 ;;; Expand
 
 (define (expand stx env store)
-  (let ((form (stx-form stx)))
-    (cond
-     ;; compound form
-     ((pair? form)
-      (let ((first (car form)))
-        (cond
-         ;; lambda
-         ((and (stx? first)
-               (eq? (resolve first store) 'lambda))
-          (let* ((id-arg (cadr form))
-                 (body (caddr form))
-                 (an (alloc-name id-arg store))
-                 (nam-new (car an))
-                 (s1 (cdr an))
-                 (as (alloc-scope id-arg s1))
-                 (scp-new (car as))
-                 (s2 (cdr as))
-                 (id-new (stx-add id-arg scp-new))
-                 (s3 (store-bind s2 id-new nam-new))
-                 (env-new (env-extend env nam-new (cons 'tvar id-new)))
-                 (body-added (stx-add body scp-new))
-                 (er (expand body-added env-new s3))
-                 (result (make-stx (list first id-new (car er)) (stx-ctx stx))))
-            (emit-rule 'lambda stx result (cdr er) env
-                       (list (cons 'name nam-new) (cons 'scope scp-new)))
-            (cons result (cdr er))))
-         ;; quote
-         ((and (stx? first)
-               (eq? (resolve first store) 'quote))
-          (emit-rule 'quote stx stx store env '())
-          (cons stx store))
-         ;; syntax
-         ((and (stx? first)
-               (eq? (resolve first store) 'syntax))
-          (emit-rule 'syntax stx stx store env '())
-          (cons stx store))
-         ;; let-syntax
-         ((and (stx? first)
-               (eq? (resolve first store) 'let-syntax))
-          (let* ((id (cadr form))
-                 (rhs (caddr form))
-                 (body (cadddr form))
-                 (an (alloc-name id store))
-                 (nam-new (car an))
-                 (s1 (cdr an))
-                 (as (alloc-scope id s1))
-                 (scp-new (car as))
-                 (s2 (cdr as))
-                 (id-new (stx-add id scp-new))
-                 (s3 (store-bind s2 id-new nam-new))
-                 (transformer (eval-ast (parse rhs s3)))
-                 (env-new (env-extend env nam-new transformer))
-                 (body-added (stx-add body scp-new))
-                 (er (expand body-added env-new s3)))
-            (emit-rule 'let-syntax stx (car er) (cdr er) env
-                       (list (cons 'name nam-new) (cons 'scope scp-new)))
-            er))
-         ;; macro invocation
-         ((and (stx? first)
-               (not (eq? (env-lookup env (resolve first store))
-                         (resolve first store))))
-          (let* ((as1 (alloc-scope (make-stx 'a '()) store))
-                 (scp-u (car as1))
-                 (s1 (cdr as1))
-                 (as2 (alloc-scope (make-stx 'a '()) s1))
-                 (scp-i (car as2))
-                 (s2 (cdr as2))
-                 (val (env-lookup env (resolve first store)))
-                 (stx-added (stx-add stx scp-u))
-                 (stx-flipped (stx-flip stx-added scp-i))
-                 (result (eval-ast `(app ,val ,stx-flipped)))
-                 (result-flipped (stx-flip result scp-i))
-                 (er (expand result-flipped env s2)))
-            (emit-rule 'macro-invoke stx (car er) (cdr er) env
-                       (list (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
-            er))
-          ;; application
-          (else
-           (let* ((er (expand* '() form env store))
-                  (result (make-stx (car er) (stx-ctx stx))))
-             (emit-rule 'app stx result (cdr er) env '())
-             (cons result (cdr er)))))))
-     ;; identifier
-     ((stx? stx)
-      (let ((transform (env-lookup env (resolve stx store))))
-        (if (and (pair? transform) (eq? (car transform) 'tvar))
-            (begin
-              (emit-rule 'id stx (cdr transform) store env
-                         (list (cons 'tvar (cdr transform))))
-              (cons (cdr transform) store))
-            (begin
-              (emit-rule 'id stx stx store env '())
-              (cons stx store)))))
-     (else (cons stx store)))))
+  (define (stx-is? sym)
+    (lambda (x)
+      (and (stx? x)
+           (eq? (resolve x store) sym))))
+  (define (shadowed-stx? x)
+    (and (stx? x)
+         (not (eq? (env-lookup env (resolve x store))
+                   (resolve x store)))))
+
+  (match (pk stx)
+    ;;; compound form
+    ;; lambda
+    [($ <stx> ((? (stx-is? 'lambda) lam) id-arg body))
+     (let* ([an         (alloc-name id-arg store)]
+            [nam-new    (car an)]
+            [s1         (cdr an)]
+            [as         (alloc-scope id-arg s1)]
+            [scp-new    (car as)]
+            [s2         (cdr as)]
+            [id-new     (stx-add id-arg scp-new)]
+            [s3         (store-bind s2 id-new nam-new)]
+            [env-new    (env-extend env nam-new (cons 'tvar id-new))]
+            [body-added (stx-add body scp-new)]
+            [er         (expand body-added env-new s3)]
+            [result     (make-stx (list lam id-new (car er)) (stx-ctx stx))])
+       (emit-rule 'lambda stx result (cdr er) env
+                  (list (cons 'name nam-new) (cons 'scope scp-new)))
+       (cons result (cdr er)))]
+    ;; quote
+    [($ <stx> ((? (stx-is? 'quote) quo) . rest))
+     (emit-rule 'quote stx stx store env '())
+     (cons stx store)]
+    ;; syntax
+    [($ <stx> ((? (stx-is? 'syntax) syn) . rest))
+     (emit-rule 'syntax stx stx store env '())
+     (cons stx store)]
+    ;; let-syntax
+    [($ <stx> ((? (stx-is? 'let-syntax) ls) id rhs body))
+     (let* ([an          (alloc-name id store)]
+            [nam-new     (car an)]
+            [s1          (cdr an)]
+            [as          (alloc-scope id s1)]
+            [scp-new     (car as)]
+            [s2          (cdr as)]
+            [id-new      (stx-add id scp-new)]
+            [s3          (store-bind s2 id-new nam-new)]
+            [transformer (eval-ast (parse rhs s3))]
+            [env-new     (env-extend env nam-new transformer)]
+            [body-added  (stx-add body scp-new)]
+            [er          (expand body-added env-new s3)])
+       (emit-rule 'let-syntax stx (car er) (cdr er) env
+                  (list (cons 'name nam-new) (cons 'scope scp-new)))
+       er)]
+    ;; macro invocation
+    [($ <stx> ((? shadowed-stx? first) . rest))
+     (let* ([as1            (alloc-scope (make-stx 'a '()) store)]
+            [scp-u          (car as1)]
+            [s1             (cdr as1)]
+            [as2            (alloc-scope (make-stx 'a '()) s1)]
+            [scp-i          (car as2)]
+            [s2             (cdr as2)]
+            [val            (env-lookup env (resolve first store))]
+            [stx-added      (stx-add stx scp-u)]
+            [stx-flipped    (stx-flip stx-added scp-i)]
+            [result         (eval-ast `(app ,val ,stx-flipped))]
+            [result-flipped (stx-flip result scp-i)]
+            [er             (expand result-flipped env s2)])
+       (emit-rule 'macro-invoke stx (car er) (cdr er) env
+                  (list (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
+       er)]
+    ;; application
+    [($ <stx> (and (first . rest) form) ctx)
+     (let* ([er     (expand* '() form env store)]
+            [result (make-stx (car er) ctx)])
+       (emit-rule 'app stx result (cdr er) env '())
+       (cons result (cdr er)))]
+    ;;; identifier
+    [($ <stx> form ctx)
+     (let ((transform (env-lookup env (resolve stx store))))
+       (if (and (pair? transform) (eq? (car transform) 'tvar))
+         (begin
+           (emit-rule 'id stx (cdr transform) store env
+                      (list (cons 'tvar (cdr transform))))
+           (cons (cdr transform) store))
+         (begin
+           (emit-rule 'id stx stx store env '())
+           (cons stx store))))]
+    [_ (cons stx store)]))
 
 (define (expand* done todo env store)
   (if (null? todo)
