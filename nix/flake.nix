@@ -40,8 +40,9 @@
                 guile-websocket
                 guile-gnutls
                 guile-json
-                nodejs-slim
+                nodejs
                 self'.packages.blue
+                esbuild
               ];
               env =
                 let
