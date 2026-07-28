@@ -9,6 +9,7 @@
   #:use-module (srfi srfi-1)
   #:use-module (core-model)
   #:use-module (phases-model)
+  #:use-module (ssv emit)
   #:export (loc-eval loc-expand))
 
 ;;; ----------------------------------------
@@ -50,8 +51,10 @@
     (let* ((er (loc-eval ph (caddr ast) maybe-scp env s*))
            (id-result (car er))
            (s*2 (cdr er))
-           (store2 (Sigma*-store s*2)))
-      (cons (env-lookup env (ph-resolve ph id-result store2)) s*2)))
+           (store2 (Sigma*-store s*2))
+           (result (env-lookup env (ph-resolve ph id-result store2))))
+      (emit-rule 'LOCAL-VALUE ast result store2 env (list (cons 'phase ph)))
+      (cons result s*2)))
 
    ;; LOCAL-EXPAND
    ((and (pair? ast) (eq? (car ast) 'app)
@@ -79,8 +82,10 @@
            (stx-flipped (ph-stx-flip ph stx maybe-scp))
            (er3 (loc-expand ph stx-flipped env-stops s*3))
            (stx-exp (car er3))
-           (s*4 (cdr er3)))
-      (cons (ph-stx-flip ph stx-exp maybe-scp) s*4)))
+           (s*4 (cdr er3))
+           (result (ph-stx-flip ph stx-exp maybe-scp)))
+      (emit-rule 'LOCAL-EXPAND ast result (Sigma*-store s*4) env (list (cons 'phase ph)))
+      (cons result s*4)))
 
    ;; LOCAL-BINDER
    ((and (pair? ast) (eq? (car ast) 'app)
@@ -88,8 +93,10 @@
     (let* ((er (loc-eval ph (caddr ast) maybe-scp env s*))
            (id-result (car er))
            (s*2 (cdr er))
-           (scps-u2 (Sigma*-scps-u s*2)))
-      (cons (ph-stx-prune ph id-result scps-u2) s*2)))
+           (scps-u2 (Sigma*-scps-u s*2))
+           (result (ph-stx-prune ph id-result scps-u2)))
+      (emit-rule 'LOCAL-BINDER ast result (Sigma*-store s*2) env (list (cons 'phase ph)))
+      (cons result s*2)))
 
    ;; function application
    ((and (pair? ast) (eq? (car ast) 'app)
@@ -99,19 +106,25 @@
            (body (caddr rator))
            (er (loc-eval ph (caddr ast) maybe-scp env s*))
            (val-arg (car er))
-           (s*2 (cdr er)))
-      (loc-eval ph (subst body bvar val-arg) maybe-scp env s*2)))
+           (s*2 (cdr er))
+           (result-er (loc-eval ph (subst body bvar val-arg) maybe-scp env s*2)))
+      (emit-rule 'fun-app ast (car result-er) (Sigma*-store (cdr result-er)) env (list (cons 'phase ph)))
+      result-er))
 
    ;; primitive application
    ((and (pair? ast) (eq? (car ast) 'app)
          (prim? (cadr ast)))
     (let* ((er (loc-eval* ph '() (cddr ast) maybe-scp env s*))
            (vals (car er))
-           (s*2 (cdr er)))
-      (cons (delta (cadr ast) vals) s*2)))
+           (s*2 (cdr er))
+           (result (delta (cadr ast) vals)))
+      (emit-rule 'prim-app ast result (Sigma*-store s*2) env (list (cons 'phase ph)))
+      (cons result s*2)))
 
    ;; value
-   (else (cons ast s*))))
+   (else
+    (emit-rule 'value ast ast (Sigma*-store s*) env (list (cons 'phase ph)))
+    (cons ast s*))))
 
 (define (loc-eval* ph done todo maybe-scp env s*)
   (if (null? todo)
@@ -134,6 +147,7 @@
          ;; stops
          ((and (stx? first)
                (tstop? (env-lookup env (ph-resolve ph first store))))
+          (emit-rule 'stops stx stx store env (list (cons 'phase ph)))
           (cons stx s*))
 
          ;; lambda
@@ -154,20 +168,26 @@
                  (s*inner (make-Sigma* s3
                                        (scps-union (list scp-new) scps-p)
                                        '()))
-                 (er (loc-expand ph body-added env-new s*inner)))
-            (cons (make-stx (list first id-new (car er)) (stx-ctx stx))
-                  (make-Sigma* (Sigma*-store (cdr er)) scps-p scps-u))))
+                 (er (loc-expand ph body-added env-new s*inner))
+                 (result (make-stx (list first id-new (car er)) (stx-ctx stx)))
+                 (s*out (make-Sigma* (Sigma*-store (cdr er)) scps-p scps-u)))
+            (emit-rule 'lambda stx result (Sigma*-store (cdr er)) env
+                       (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
+            (cons result s*out)))
 
          ;; quote
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'quote))
+          (emit-rule 'quote stx stx store env (list (cons 'phase ph)))
           (cons stx s*))
 
          ;; syntax
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'syntax))
-          (let ((pruned (ph-stx-prune ph (cadr form) scps-p)))
-            (cons (make-stx (list first pruned) (stx-ctx stx)) s*)))
+          (let* ((pruned (ph-stx-prune ph (cadr form) scps-p))
+                 (result (make-stx (list first pruned) (stx-ctx stx))))
+            (emit-rule 'syntax stx result store env (list (cons 'phase ph)))
+            (cons result s*)))
 
          ;; let-syntax
          ((and (stx? first)
@@ -198,8 +218,11 @@
                                       (scps-union (list scp-new) scps-p)
                                       '())))
             (let ((er (loc-expand ph body-added env-new s*body)))
-              (cons (car er)
-                    (make-Sigma* (Sigma*-store (cdr er)) scps-p scps-u)))))
+              (let ((result (car er))
+                    (s*out (make-Sigma* (Sigma*-store (cdr er)) scps-p scps-u)))
+                (emit-rule 'let-syntax stx result (Sigma*-store (cdr er)) env
+                           (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
+                (cons result s*out)))))
 
 ;; macro invocation
           ((and (stx? first)
@@ -222,23 +245,35 @@
                                     scp-i env s*3))
                  (stx-exp (car eval-er))
                  (s*4 (cdr eval-er))
-                 (result-flipped (ph-stx-flip ph stx-exp scp-i)))
-            (loc-expand ph result-flipped env s*4)))
+                 (result-flipped (ph-stx-flip ph stx-exp scp-i))
+                 (er (loc-expand ph result-flipped env s*4)))
+            (emit-rule 'macro-invoke stx (car er) (Sigma*-store (cdr er)) env
+                       (list (cons 'phase ph) (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
+            er))
 
          ;; application
          (else
           (let* ((s*app (make-Sigma* store scps-p '()))
-                 (er (loc-expand* ph '() form env s*app)))
-            (cons (make-stx (car er) (stx-ctx stx))
-                  (make-Sigma* (cadr er) scps-p scps-u)))))))
+                 (er (loc-expand* ph '() form env s*app))
+                 (result (make-stx (car er) (stx-ctx stx)))
+                 (s*out (make-Sigma* (cadr er) scps-p scps-u)))
+            (emit-rule 'app stx result (cadr er) env (list (cons 'phase ph)))
+            (cons result s*out))))))
 
      ;; identifier
      ((stx? stx)
       (let ((transform (env-lookup env (ph-resolve ph stx store))))
         (if (and (pair? transform) (eq? (car transform) 'tvar))
-            (cons (cdr transform) s*)
-            (cons stx s*))))
-     (else (cons stx s*)))))
+            (begin
+              (emit-rule 'id stx (cdr transform) store env
+                         (list (cons 'phase ph) (cons 'tvar (cdr transform))))
+              (cons (cdr transform) s*))
+            (begin
+              (emit-rule 'id stx stx store env (list (cons 'phase ph)))
+              (cons stx s*)))))
+     (else
+      (emit-rule 'literal stx stx store env (list (cons 'phase ph)))
+      (cons stx s*)))))
 
 (define (loc-expand* ph done todo env s*)
   (if (null? todo)

@@ -37,7 +37,16 @@
                 (trace-result model datum expanded store (parse expanded store)))]
              [(phases)
               (let* ([er (ph-expand 0 stx (primitives-env) '() (init-store))]
-                     [expanded (car er) (store (cdr er))])
+                     [expanded (car er)]
+                     [store (cdr er)])
+                (trace-result model datum expanded store (ph-parse 0 expanded store)))]
+             [(local)
+              (let* ((er (loc-expand 0 stx (primitives-env) (list (init-store) '() '())))
+                     (expanded (car er)) (store (cadr er)))
+                (trace-result model datum expanded store (ph-parse 0 expanded store)))]
+             [(defs)
+              (let* ((er (defs-expand 0 stx (primitives-env) (list (init-store) '() '())))
+                     (expanded (car er)) (store (cadr er)))
                 (trace-result model datum expanded store (ph-parse 0 expanded store)))]
              [else (error "run-traced: unknown model" model)]))])
     (tracing-off!)

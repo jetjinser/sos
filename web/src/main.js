@@ -4,6 +4,10 @@ const EXAMPLES = {
   core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
   phases:
     "(lambda z (let-syntax x (lambda s (MKS (LIST (syntax lambda) (syntax z) (CAR (CDR (SE s)))) (syntax here))) (x z)))",
+  local:
+    "(let-syntax q (lambda s (syntax (CAR 8))) (let-syntax x (lambda s (CAR (CDR (SE (LOCAL-EXPAND (CAR (CDR (SE s))) (LIST)))))) (x (q))))",
+  defs:
+    "(let-syntax call (lambda s (MKS (LIST (CAR (CDR (SE s)))) (syntax here))) (let-syntax p (lambda s (syntax 0)) (let-syntax q (lambda s ((lambda defs ((lambda ignored (MKS (LIST (syntax lambda) (LOCAL-BINDER (CAR (CDR (SE (LOCAL-EXPAND (MKS (LIST (syntax quote) (CAR (CDR (SE s)))) (syntax here)) (LIST) defs))))) (LOCAL-EXPAND (CAR (CDR (CDR (SE s)))) (LIST (syntax call)) defs)) (syntax here))) (DEF-BIND defs (CAR (CDR (SE s)))))) (NEW-DEFS))) (q p (call p)))))",
 };
 
 const app = document.getElementById("app");
@@ -26,6 +30,8 @@ async function main() {
         <select id="model">
           <option value="core">core</option>
           <option value="phases">phases</option>
+          <option value="local">local</option>
+          <option value="defs">defs</option>
         </select>
       </label>
       <button id="run">Run</button>
