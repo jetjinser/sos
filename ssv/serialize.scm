@@ -81,8 +81,14 @@
 
 (define (stx->json stx)
   (json-object
-   (list (cons "form" (value->json (stx-form stx)))
-         (cons "ctx"  (ctx->json (stx-ctx stx))))))
+   (append
+    (list (cons "form" (value->json (stx-form stx)))
+          (cons "ctx"  (ctx->json (stx-ctx stx))))
+    (let ((span (stx-span stx)))
+      (if span
+          (list (cons "span" (json-array (list (json-number (car span))
+                                               (json-number (cdr span))))))
+          '())))))
 
 ;;; ----------------------------------------
 ;;; Store

@@ -26,29 +26,28 @@
         (cons 'final-ast ast)
         (cons 'final-store store)))
 
-(define (run-traced model datum)
+(define (run-traced model stx)
   (reset-trace!)
   (tracing-on!)
   (let ([result
-         (let ([stx (as-syntax datum)])
-           (case model
-             [(core)
-              (receive (expanded store) (expand stx (primitives-env) (init-store))
-                (trace-result model datum expanded store (parse expanded store)))]
-             [(phases)
-              (receive (expanded store) (ph-expand 0 stx (primitives-env) '() (init-store))
-                (trace-result model datum expanded store (ph-parse 0 expanded store)))]
-             [(local)
-              (receive (expanded s*) (loc-expand 0 stx (primitives-env)
-                                                 (list (init-store) '() '()))
-                (let ((store (car s*)))
-                  (trace-result model datum expanded store (ph-parse 0 expanded store))))]
-             [(defs)
-              (receive (expanded s*) (defs-expand 0 stx (primitives-env)
-                                                  (list (init-store) '() '()))
-                (let ((store (car s*)))
-                  (trace-result model datum expanded store (ph-parse 0 expanded store))))]
-             [else (error "run-traced: unknown model" model)]))])
+         (case model
+           [(core)
+            (receive (expanded store) (expand stx (primitives-env) (init-store))
+              (trace-result model stx expanded store (parse expanded store)))]
+           [(phases)
+            (receive (expanded store) (ph-expand 0 stx (primitives-env) '() (init-store))
+              (trace-result model stx expanded store (ph-parse 0 expanded store)))]
+           [(local)
+            (receive (expanded s*) (loc-expand 0 stx (primitives-env)
+                                               (list (init-store) '() '()))
+              (let ((store (car s*)))
+                (trace-result model stx expanded store (ph-parse 0 expanded store))))]
+           [(defs)
+            (receive (expanded s*) (defs-expand 0 stx (primitives-env)
+                                                (list (init-store) '() '()))
+              (let ((store (car s*)))
+                (trace-result model stx expanded store (ph-parse 0 expanded store))))]
+           [else (error "run-traced: unknown model" model)])])
     (tracing-off!)
     result))
 

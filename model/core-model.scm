@@ -11,7 +11,7 @@
   #:use-module (ice-9 match)
   #:use-module (ice-9 receive)
   #:use-module (ssv emit)
-  #:export (make-stx stx? stx-form stx-ctx
+  #:export (make-stx stx? stx-form stx-ctx stx-span
             make-store store? store-counter store-binds store-boxes store-def-envs
             scps-union scps-subtract scps-addremove scps-subset? biggest-subset
             stx-add stx-flip stx-strip
@@ -28,10 +28,11 @@
 ;;; Data structures
 
 (define-record-type <stx>
-  (make-stx form ctx)
+  (make-stx form ctx span)
   stx?
   (form stx-form)
-  (ctx stx-ctx))
+  (ctx stx-ctx)
+  (span stx-span))
 
 (define-record-type <store>
   (make-store counter binds boxes def-envs)
@@ -82,7 +83,8 @@
     (make-stx (if (pair? form)
                   (map (cut %stx-add <> scp) form)
                   form)
-              (scps-union (list scp) (stx-ctx stx)))))
+              (scps-union (list scp) (stx-ctx stx))
+              (stx-span stx))))
 
 (define (stx-add stx scp)
   (let ((r (%stx-add stx scp)))
@@ -94,7 +96,8 @@
     (make-stx (if (pair? form)
                 (map (cut %stx-flip <> scp) form)
                 form)
-              (scps-addremove scp (stx-ctx stx)))))
+              (scps-addremove scp (stx-ctx stx))
+              (stx-span stx))))
 
 (define (stx-flip stx scp)
   (let ([r (%stx-flip stx scp)])
@@ -206,7 +209,7 @@
     [('SE   stx)         (stx-form stx)]
     [('CAR  (head . _))  head]
     [('CDR  (_ . tail))  tail]
-    [('MKS  val ctx-stx) (make-stx val (stx-ctx ctx-stx))]
+    [('MKS  val ctx-stx) (make-stx val (stx-ctx ctx-stx) #f)]
     [('+    a   b)       (+ a b)]
     [('-    a   b)       (- a b)]
     [('CONS a   b)       (cons a b)]
@@ -296,7 +299,7 @@
                    [(env-new)     (env-extend env nam-new (cons 'tvar id-new))]
                    [(body-added)  (stx-add body scp-new)]
                    [(body-exp s4) (expand body-added env-new s3)])
-       (let ([result (make-stx (list lam id-new body-exp) (stx-ctx stx))])
+       (let ([result (make-stx (list lam id-new body-exp) (stx-ctx stx) (stx-span stx))])
          (emit-rule 'lambda stx result s4 env
                     (list (cons 'name nam-new) (cons 'scope scp-new)))
          (values result s4)))]
@@ -323,8 +326,8 @@
        (values body-exp s4))]
     ;; macro invocation
     [($ <stx> ((? shadowed-stx? first) . rest))
-     (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '()) store)]
-                   [(scp-i s2)       (alloc-scope (make-stx 'a '()) s1)]
+     (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '() #f) store)]
+                   [(scp-i s2)       (alloc-scope (make-stx 'a '() #f) s1)]
                    [(val)            (env-lookup env (resolve first store))]
                    [(stx-added)      (stx-add stx scp-u)]
                    [(stx-flipped)    (stx-flip stx-added scp-i)]
@@ -337,7 +340,7 @@
     ;; application
     [($ <stx> (and (first . rest) form) ctx)
      (let*-values ([(expanded s1) (expand* '() form env store)]
-                   [(result)      (make-stx expanded ctx)])
+                   [(result)      (make-stx expanded ctx (stx-span stx))])
        (emit-rule 'app stx result s1 env '())
        (values result s1))]
     ;;; identifier
@@ -365,9 +368,9 @@
 (define (as-syntax datum)
   (cond
    [(pair? datum)
-    (make-stx (map as-syntax datum) '())]
+    (make-stx (map as-syntax datum) '() #f)]
    [else
-    (make-stx datum '())]))
+    (make-stx datum '() #f)]))
 
 (define (init-store)
   (make-store 0 '() '() '()))

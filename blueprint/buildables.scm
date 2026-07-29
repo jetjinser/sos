@@ -42,6 +42,8 @@
 (define +app-deps+
   '("ssv/trace.scm"
     "ssv/serialize.scm"
+    "ssv/source.scm"
+    "ssv/emit.scm"
     "model/core-model.scm"
     "model/phases-model.scm"
     "model/local-model.scm"

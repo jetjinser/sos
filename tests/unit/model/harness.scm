@@ -26,7 +26,8 @@
   (cond
    ((and (stx? a) (stx? b))
     (and (term=? (stx-form a) (stx-form b))
-         (equal? (stx-ctx a) (stx-ctx b))))
+         (equal? (stx-ctx a) (stx-ctx b))
+         (equal? (stx-span a) (stx-span b))))
    ((and (pair? a) (pair? b))
     (and (term=? (car a) (car b))
          (term=? (cdr a) (cdr b))))

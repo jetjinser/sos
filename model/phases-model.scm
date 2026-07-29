@@ -44,7 +44,8 @@
                   (map (lambda (s) (%ph-stx-add ph s scp)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
-                          (scps-union (list scp) (at-phase (stx-ctx stx) ph))))))
+                          (scps-union (list scp) (at-phase (stx-ctx stx) ph)))
+              (stx-span stx))))
 
 (define (ph-stx-add ph stx scp)
   (let ((r (%ph-stx-add ph stx scp)))
@@ -57,7 +58,8 @@
                   (map (lambda (s) (%ph-stx-flip ph s scp)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
-                          (scps-addremove scp (at-phase (stx-ctx stx) ph))))))
+                          (scps-addremove scp (at-phase (stx-ctx stx) ph)))
+              (stx-span stx))))
 
 (define (ph-stx-flip ph stx scp)
   (let ((r (%ph-stx-flip ph stx scp)))
@@ -70,7 +72,8 @@
                   (map (lambda (s) (%ph-stx-prune ph s scps-p)) form)
                   form)
               (update-ctx (stx-ctx stx) ph
-                          (scps-subtract (at-phase (stx-ctx stx) ph) scps-p)))))
+                          (scps-subtract (at-phase (stx-ctx stx) ph) scps-p))
+              (stx-span stx))))
 
 (define (ph-stx-prune ph stx scps-p)
   (let ((r (%ph-stx-prune ph stx scps-p)))
@@ -159,7 +162,7 @@
                         [(body-added)  (ph-stx-add ph body scp-new)]
                         [(body-exp s4) (ph-expand ph body-added env-new
                                                   (scps-union (list scp-new) scps-p) s3)])
-            (let ([result (make-stx (list first id-new body-exp) (stx-ctx stx))])
+            (let ([result (make-stx (list first id-new body-exp) (stx-ctx stx) (stx-span stx))])
               (emit-rule 'lambda stx result s4 env
                          (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
               (values result s4))))
@@ -172,7 +175,7 @@
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'syntax))
           (let* ((pruned (ph-stx-prune ph (cadr form) scps-p))
-                 (result (make-stx (list first pruned) (stx-ctx stx))))
+                  (result (make-stx (list first pruned) (stx-ctx stx) (stx-span stx))))
             (emit-rule 'syntax stx result store env (list (cons 'phase ph)))
             (values result store)))
          ;; let-syntax
@@ -198,8 +201,8 @@
          ((and (stx? first)
                (not (eq? (env-lookup env (ph-resolve ph first store))
                          (ph-resolve ph first store))))
-          (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '()) store)]
-                        [(scp-i s2)       (alloc-scope (make-stx 'a '()) s1)]
+           (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '() #f) store)]
+                         [(scp-i s2)       (alloc-scope (make-stx 'a '() #f) s1)]
                         [(val)            (env-lookup env (ph-resolve ph first store))]
                         [(stx-added)      (ph-stx-add ph stx scp-u)]
                         [(stx-flipped)    (ph-stx-flip ph stx-added scp-i)]
@@ -213,7 +216,7 @@
          ;; application
          (else
           (let*-values ([(expanded s1) (ph-expand* ph '() form env scps-p store)]
-                        [(result)      (make-stx expanded (stx-ctx stx))])
+                         [(result)      (make-stx expanded (stx-ctx stx) (stx-span stx))])
             (emit-rule 'app stx result s1 env (list (cons 'phase ph)))
             (values result s1))))))
      ;; identifier

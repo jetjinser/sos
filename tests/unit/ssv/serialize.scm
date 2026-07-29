@@ -57,7 +57,7 @@
   (parsed (store->json (init-store))))
 (test-equal "store-bound"
   '(("binds" ("z" (("z:1") "z:0"))) ("boxes") ("counter" . 0) ("def-envs"))
-  (parsed (store->json (store-bind (init-store) (make-stx 'z '(z:1)) 'z:0))))
+  (parsed (store->json (store-bind (init-store) (make-stx 'z '(z:1) #f) 'z:0))))
 
 ;;; Environment
 (test-equal "env"

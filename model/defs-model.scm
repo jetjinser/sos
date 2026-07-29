@@ -121,7 +121,7 @@
    ((and (pair? ast) (eq? (car ast) 'app)
          (eq? (cadr ast) 'NEW-DEFS))
     (let*-values ([(store)       (Sigma*-store s*)]
-                  [(scp-defs s1) (alloc-scope (make-stx 'defs '()) store)]
+                  [(scp-defs s1) (alloc-scope (make-stx 'defs '() #f) store)]
                   [(addr-env s2) (alloc-def-env s1)])
       (let* ([scps-p (Sigma*-scps-p s*)]
              [scps-u (Sigma*-scps-u s*)]
@@ -353,7 +353,7 @@
                                                      (scps-union (list scp-new) scps-p)
                                                      '())]
                         [(body-exp s*4) (defs-expand ph body-added env-new s*inner)])
-            (let ([result (make-stx (list first id-new body-exp) (stx-ctx stx))]
+            (let ([result (make-stx (list first id-new body-exp) (stx-ctx stx) (stx-span stx))]
                   [s*out  (make-Sigma* (Sigma*-store s*4) scps-p scps-u)])
               (emit-rule 'lambda stx result (Sigma*-store s*4) env
                          (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
@@ -369,7 +369,7 @@
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'syntax))
           (let* ((pruned (ph-stx-prune ph (cadr form) scps-p))
-                 (result (make-stx (list first pruned) (stx-ctx stx))))
+                 (result (make-stx (list first pruned) (stx-ctx stx) (stx-span stx))))
             (emit-rule 'syntax stx result store env (list (cons 'phase ph)))
             (values result s*)))
 
@@ -407,8 +407,8 @@
                (let ((t (env-lookup env (ph-resolve ph first store))))
                  (and (not (eq? t (ph-resolve ph first store)))
                       (not (and (pair? t) (eq? (car t) 'tvar))))))
-          (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'u '()) store)]
-                        [(scp-i s2)       (alloc-scope (make-stx 'i '()) s1)]
+           (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'u '() #f) store)]
+                         [(scp-i s2)       (alloc-scope (make-stx 'i '() #f) s1)]
                         [(val)            (env-lookup env (ph-resolve ph first store))]
                         [(s*3)            (make-Sigma* s2
                                                        (scps-union (list scp-u) scps-p)
@@ -427,7 +427,7 @@
          (else
           (let*-values ([(s*app)              (make-Sigma* store scps-p '())]
                         [(expanded store-out) (defs-expand* ph '() form env s*app)]
-                        [(result)             (make-stx expanded (stx-ctx stx))]
+                        [(result)             (make-stx expanded (stx-ctx stx) (stx-span stx))]
                         [(s*out)              (make-Sigma* store-out scps-p scps-u)])
             (emit-rule 'app stx result store-out env (list (cons 'phase ph)))
             (values result s*out))))))
