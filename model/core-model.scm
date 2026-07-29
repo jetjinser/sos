@@ -7,6 +7,7 @@
   #:use-module (srfi srfi-1)  ; list
   #:use-module (srfi srfi-9)  ; record
   #:use-module (srfi srfi-11) ; values
+  #:use-module (srfi srfi-26) ; cut(e)
   #:use-module (ice-9 match)
   #:use-module (ice-9 receive)
   #:use-module (ssv emit)
@@ -20,9 +21,8 @@
             prim? delta
             subst eval-ast
             parse
-            expand expand*
-            as-syntax init-store primitives-env
-            stx->datum))
+            expand
+            as-syntax init-store primitives-env))
 
 ;;; ----------------------------------------
 ;;; Data structures
@@ -48,15 +48,15 @@
   (append s1 s2))
 
 (define (scps-subtract s1 s2)
-  (cond ((null? s2) s1)
-        ((memq (car s2) s1)
-         (scps-subtract (delq (car s2) s1) (cdr s2)))
-        (else (scps-subtract s1 (cdr s2)))))
+  (cond [(null? s2) s1]
+        [(memq (car s2) s1)
+         (scps-subtract (delq (car s2) s1) (cdr s2))]
+        [else (scps-subtract s1 (cdr s2))]))
 
 (define (scps-addremove scp s)
   (if (memq scp s)
-      (delq scp s)
-      (cons scp s)))
+    (delq scp s)
+    (cons scp s)))
 
 (define (scps-subset? s1 s2)
   (or (null? s1)
@@ -64,8 +64,8 @@
            (scps-subset? (cdr s1) s2))))
 
 (define (biggest-subset ref candidates)
-  (let* ((matching (filter (lambda (c) (scps-subset? c ref)) candidates))
-         (sorted (sort matching (lambda (a b) (> (length a) (length b))))))
+  (let* ([matching (filter (cut scps-subset? <> ref) candidates)]
+         [sorted   (sort matching (lambda (a b) (> (length a) (length b))))])
     (if (or (null? sorted)
             (and (pair? (cdr sorted))
                  (= (length (car sorted)) (length (cadr sorted))))
@@ -80,7 +80,7 @@
 (define (%stx-add stx scp)
   (let ((form (stx-form stx)))
     (make-stx (if (pair? form)
-                  (map (lambda (s) (%stx-add s scp)) form)
+                  (map (cut %stx-add <> scp) form)
                   form)
               (scps-union (list scp) (stx-ctx stx)))))
 
@@ -90,22 +90,27 @@
     r))
 
 (define (%stx-flip stx scp)
-  (let ((form (stx-form stx)))
+  (let ([form (stx-form stx)])
     (make-stx (if (pair? form)
-                  (map (lambda (s) (%stx-flip s scp)) form)
-                  form)
+                (map (cut %stx-flip <> scp) form)
+                form)
               (scps-addremove scp (stx-ctx stx)))))
 
 (define (stx-flip stx scp)
-  (let ((r (%stx-flip stx scp)))
+  (let ([r (%stx-flip stx scp)])
     (emit-op 'stx-flip scp stx r)
     r))
 
 (define (stx-strip stx)
   (let ((form (stx-form stx)))
     (if (pair? form)
-        (cons 'list-val (map stx-strip form))
-        form)))
+      (cons 'list-val (map stx-strip form))
+      form)))
+
+(define (%store-stx-is? store sym)
+  (lambda (x)
+    (and (stx? x)
+         (eq? (resolve x store) sym))))
 
 ;;; ----------------------------------------
 ;;; Store operations
@@ -115,17 +120,18 @@
     (if entry (cdr entry) '())))
 
 (define (store-bind store id name)
-  (let* ((sym (stx-form id))
-         (scopes (stx-ctx id))
-         (binds (store-binds store))
-         (existing (assq sym binds)))
+  (let* ([sym      (stx-form id)]
+         [scopes   (stx-ctx id)]
+         [binds    (store-binds store)]
+         [existing (assq sym binds)])
     (emit-op 'bind sym scopes name)
     (if existing
         (make-store (store-counter store)
-                    (map (lambda (b)
-                           (if (eq? (car b) sym)
-                               (cons sym (cons (cons scopes name) (cdr b)))
-                               b))
+                    (map (match-lambda
+                           [(and (b . bs) bind)
+                            (if (eq? b sym)
+                              `(,sym . ((,scopes . ,name) . ,bs))
+                              bind)])
                          binds)
                     (store-boxes store)
                     (store-def-envs store))
@@ -136,14 +142,15 @@
 
 (define (binding-lookup bindings scps)
   (let loop ((bs bindings))
-    (cond ((null? bs) #f)
-          ((equal? (caar bs) scps) (cdar bs))
-          (else (loop (cdr bs))))))
+    (match bs
+      [()                                       #f]
+      [(((? (cut equal? <> scps)) . found) . _) found]
+      [(b . bs)                                 (loop bs)])))
 
 (define (resolve id store)
-  (let* ((sym (stx-form id))
-         (ctx (stx-ctx id))
-         (bindings (store-lookup store sym)))
+  (let* ([sym      (stx-form id)]
+         [ctx      (stx-ctx id)]
+         [bindings (store-lookup store sym)])
     (if (null? bindings)
         sym
         (let ((biggest (biggest-subset ctx (map car bindings))))
@@ -195,113 +202,90 @@
             BOX UNBOX SET-BOX! NEW-DEFS DEF-BIND)))
 
 (define (delta prim args)
-  (case prim
-    ((SE) (stx-form (car args)))
-    ((MKS) (let ((val (car args))
-                 (ctx-stx (cadr args)))
-             (make-stx val (stx-ctx ctx-stx))))
-    ((+) (+ (car args) (cadr args)))
-    ((-) (- (car args) (cadr args)))
-    ((CONS) (cons (car args) (cadr args)))
-    ((CAR) (car (car args)))
-    ((CDR) (cdr (car args)))
-    ((LIST) args)
-    (else (error "delta: unknown primitive" prim))))
+  (match (cons prim args)
+    [('SE   stx)         (stx-form stx)]
+    [('CAR  (head . _))  head]
+    [('CDR  (_ . tail))  tail]
+    [('MKS  val ctx-stx) (make-stx val (stx-ctx ctx-stx))]
+    [('+    a   b)       (+ a b)]
+    [('-    a   b)       (- a b)]
+    [('CONS a   b)       (cons a b)]
+    [('LIST . elts)     elts]
+    [_ (error "delta: unknown primitive or bad arity" prim args)]))
 
 ;;; ----------------------------------------
 ;;; Substitution and evaluation
 
-(define *subst-counter* 0)
-
-(define (fresh-var base)
-  (let ((v (string->symbol (string-append (symbol->string base)
-                                          "#s"
-                                          (number->string *subst-counter*)))))
-    (set! *subst-counter* (+ *subst-counter* 1))
-    v))
+(define %fresh-var
+  (let ([counter 0])
+    (lambda (base)
+      (let ([v (format #f "~s#s~a" base counter)])
+        (set! counter (+ counter 1))
+        (string->symbol v)))))
 
 (define (subst ast var val)
-  (cond
-   ((and (pair? ast) (eq? (car ast) 'var))
-    (if (eq? (cadr ast) var)
-        val
-        ast))
-   ((and (pair? ast) (eq? (car ast) 'app))
-    (cons 'app (map (lambda (a) (subst a var val)) (cdr ast))))
-   ((and (pair? ast) (eq? (car ast) 'fun))
-    (let ((bvar (cadr (cadr ast)))
-          (body (caddr ast)))
-      (if (eq? bvar var)
-          ast
-          (let ((fv (fresh-var bvar)))
-            `(fun (var ,fv)
-                  ,(subst (subst body bvar `(var ,fv)) var val))))))
-   ((and (pair? ast) (eq? (car ast) 'list-val))
-    (cons 'list-val (map (lambda (v) (subst v var val)) (cdr ast))))
-   ((stx? ast) ast)
-   (else ast)))
+  (match ast
+    [('var v)
+     (if (eq? v var)
+       val
+       ast)]
+    [('app . args)
+     `(app ,@(map (cut subst <> var val) args))]
+    [('fun ('var (? (cut eq? <> var))) body)
+     ast]
+    [('fun ('var bvar) body)
+     (let ([fv (%fresh-var bvar)])
+       `(fun (var ,fv)
+             ,(subst (subst body bvar `(var ,fv)) var val)))]
+    [('list-val . elts)
+     `(list-val ,@(map (cut subst <> var val) elts))]
+    [ast ast]))
 
 (define (eval-ast ast)
-  (cond
-   ((and (pair? ast) (eq? (car ast) 'app))
-    (let ((rator (cadr ast))
-          (rands (cddr ast)))
-      (cond
-       ((and (pair? rator) (eq? (car rator) 'fun))
-        (let ((bvar (cadr (cadr rator)))
-              (body (caddr rator)))
-          (eval-ast (subst body bvar (eval-ast (car rands))))))
-       ((prim? rator)
-        (delta rator (map eval-ast rands)))
-       (else
-        (error "eval-ast: cannot apply" rator)))))
-   ((and (pair? ast) (eq? (car ast) 'fun)) ast)
-   ((and (pair? ast) (eq? (car ast) 'var))
-    (error "eval-ast: unbound variable" (cadr ast)))
-   ((and (pair? ast) (eq? (car ast) 'list-val))
-    (cons 'list-val (map eval-ast (cdr ast))))
-   (else ast)))
+  (match ast
+    [('app ('fun ('var bvar) body) rand . rands)
+     (eval-ast (subst body bvar (eval-ast rand)))]
+    [('app (? prim? rator) . rands)
+     (delta rator (map eval-ast rands))]
+    [('app rator . rands)
+     (error "eval-ast: cannot apply" rator)]
+    [('fun . rest) ast]
+    [('var v)
+     (error "eval-ast: unbound variable" v)]
+    [('list-val lv)
+     `(list-val ,@(map eval-ast lv))]
+    [ast ast]))
 
 ;;; ----------------------------------------
 ;;; Parse
 
 (define (parse stx store)
-  (let ((form (stx-form stx)))
-    (cond
-     ((pair? form)
-      (let ((first (car form)))
-        (cond
-         ((and (stx? first)
-               (eq? (resolve first store) 'lambda))
-          (let ((id-arg (cadr form))
-                (body (caddr form)))
-            `(fun (var ,(resolve id-arg store))
-                  ,(parse body store))))
-         ((and (stx? first)
-               (eq? (resolve first store) 'quote))
-          (stx-strip (cadr form)))
-         ((and (stx? first)
-               (eq? (resolve first store) 'syntax))
-          (cadr form))
-         (else
-          (cons 'app (map (lambda (s) (parse s store)) form))))))
-     ((or (number? form) (prim? form)) form)
-     (else `(var ,(resolve stx store))))))
+  (define (stx-is? sym)
+    (%store-stx-is? store sym))
+
+  (match (stx-form stx)
+    [((? (stx-is? 'lambda)) id-arg body)
+     `(fun (var ,(resolve id-arg store))
+           ,(parse body store))]
+    [((? (stx-is? 'quote)) body)  (stx-strip body)]
+    [((? (stx-is? 'syntax)) body) body]
+    [(and (first . rest) form)
+     (cons 'app (map (cut parse <> store) form))]
+    [(and (or (? number?) (? prim?)) form) form]
+    [form `(var ,(resolve stx store))]))
 
 ;;; ----------------------------------------
 ;;; Expand
 
 (define (expand stx env store)
   (define (stx-is? sym)
-    (lambda (x)
-      (and (stx? x)
-           (eq? (resolve x store) sym))))
+    (%store-stx-is? store sym))
   (define (shadowed-stx? x)
     (and (stx? x)
          (not (eq? (env-lookup env (resolve x store))
                    (resolve x store)))))
 
-  (match (pk stx)
+  (match stx
     ;;; compound form
     ;; lambda
     [($ <stx> ((? (stx-is? 'lambda) lam) id-arg body))
@@ -371,31 +355,22 @@
 
 (define (expand* done todo env store)
   (if (null? todo)
-      (values (reverse done) store)
-      (receive (expanded s1) (expand (car todo) env store)
-        (expand* (cons expanded done) (cdr todo) env s1))))
+    (values (reverse done) store)
+    (receive (expanded s1) (expand (car todo) env store)
+      (expand* (cons expanded done) (cdr todo) env s1))))
 
 ;;; ----------------------------------------
 ;;; Helpers
 
 (define (as-syntax datum)
   (cond
-   ((pair? datum)
-    (make-stx (map as-syntax datum) '()))
-   (else
-    (make-stx datum '()))))
+   [(pair? datum)
+    (make-stx (map as-syntax datum) '())]
+   [else
+    (make-stx datum '())]))
 
 (define (init-store)
   (make-store 0 '() '() '()))
 
 (define (primitives-env)
   '())
-
-;;; ----------------------------------------
-;;; Display helpers
-
-(define (stx->datum x)
-  (cond
-   ((stx? x) (stx->datum (stx-form x)))
-   ((pair? x) (map stx->datum x))
-   (else x)))
