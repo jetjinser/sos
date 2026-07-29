@@ -41,7 +41,6 @@
 ;;; Defs value: (defs scp . addr)
 
 (define (make-defs scp addr) (cons 'defs (cons scp addr)))
-(define (defs? x) (and (pair? x) (eq? (car x) 'defs)))
 (define (defs-scp x) (cadr x))
 (define (defs-addr x) (cddr x))
 
@@ -457,13 +456,3 @@
                       (make-Sigma* (Sigma*-store s*out)
                                    (Sigma*-scps-p s*)
                                    '())))))
-
-;;; ----------------------------------------
-;;; Helpers
-
-(define (defs-as-syntax datum)
-  (cond
-   ((pair? datum)
-    (make-stx (map defs-as-syntax datum) '()))
-   (else
-    (make-stx datum '()))))

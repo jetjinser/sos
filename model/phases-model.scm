@@ -15,8 +15,7 @@
             update-ctx at-phase
             ph-store-bind ph-resolve
             ph-parse
-            ph-expand ph-expand*
-            ph-as-syntax))
+            ph-expand ph-expand*))
 
 ;;; ----------------------------------------
 ;;; Context operations (phase-indexed map)
@@ -236,12 +235,3 @@
       (receive (expanded s1) (ph-expand ph (car todo) env scps-p store)
         (ph-expand* ph (cons expanded done) (cdr todo) env scps-p s1))))
 
-;;; ----------------------------------------
-;;; Helpers
-
-(define (ph-as-syntax datum)
-  (cond
-   ((pair? datum)
-    (make-stx (map ph-as-syntax datum) '()))
-   (else
-    (make-stx datum '()))))

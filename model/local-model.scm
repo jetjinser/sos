@@ -256,12 +256,3 @@
                                   (Sigma*-scps-p s*)
                                   '())))))
 
-;;; ----------------------------------------
-;;; Helpers
-
-(define (loc-as-syntax datum)
-  (cond
-   ((pair? datum)
-    (make-stx (map loc-as-syntax datum) '()))
-   (else
-    (make-stx datum '()))))
