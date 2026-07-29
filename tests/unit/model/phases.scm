@@ -12,7 +12,7 @@
 (test-begin "model-phases")
 
 (define (run input)
-  (receive (expanded store) (ph-expand 0 (as-syntax input) (primitives-env) '() (init-store))
+  (receive (expanded store) (ph-expand 0 input (primitives-env) '() (init-store))
     (ph-parse 0 expanded store)))
 
 (test-assert "simple-macro"

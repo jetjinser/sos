@@ -26,6 +26,8 @@
     "model/phases-model.scm"
     "model/local-model.scm"
     "model/defs-model.scm"
+    "ssv/emit.scm"
+    "ssv/source.scm"
     "tests/unit/model/harness.scm"))
 
 ;;; Compile the model test suites to a WebAssembly module via Guile Hoot.

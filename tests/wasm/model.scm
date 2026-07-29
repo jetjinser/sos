@@ -12,20 +12,20 @@
              (tests unit model harness))
 
 (define (core-run in)
-  (receive (expanded store) (expand (as-syntax in) (primitives-env) (init-store))
+  (receive (expanded store) (expand in (primitives-env) (init-store))
     (parse expanded store)))
 
 (define (phases-run in)
-  (receive (expanded store) (ph-expand 0 (as-syntax in) (primitives-env) '() (init-store))
+  (receive (expanded store) (ph-expand 0 in (primitives-env) '() (init-store))
     (ph-parse 0 expanded store)))
 
 (define (local-run in)
-  (receive (expanded s*) (loc-expand 0 (as-syntax in) (primitives-env)
+  (receive (expanded s*) (loc-expand 0 in (primitives-env)
                                      (list (init-store) '() '()))
     (ph-parse 0 expanded (car s*))))
 
 (define (defs-run in)
-  (receive (expanded s*) (defs-expand 0 (as-syntax in) (primitives-env)
+  (receive (expanded s*) (defs-expand 0 in (primitives-env)
                                       (list (init-store) '() '()))
     (ph-parse 0 expanded (car s*))))
 

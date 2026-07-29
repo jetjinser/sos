@@ -13,7 +13,7 @@
 (test-begin "model-local")
 
 (define (run input)
-  (receive (expanded s*) (loc-expand 0 (as-syntax input) (primitives-env)
+  (receive (expanded s*) (loc-expand 0 input (primitives-env)
                                      (list (init-store) '() '()))
     (ph-parse 0 expanded (car s*))))
 

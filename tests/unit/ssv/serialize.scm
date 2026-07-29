@@ -8,6 +8,7 @@
   #:use-module (srfi srfi-64)
   #:use-module (core-model)
   #:use-module (ssv serialize)
+  #:use-module (ssv source)
   #:use-module (json))
 
 (test-begin "ssv-serialize")
@@ -45,11 +46,13 @@
 
 ;;; Syntax objects
 (test-equal "stx-atom"
-  '(("ctx") ("form" . "x"))
-  (parsed (stx->json (as-syntax 'x))))
+  '(("ctx") ("form" . "x") ("span" 0 1))
+  (parsed (stx->json (string->stx "x"))))
 (test-equal "stx-compound"
-  '(("ctx") ("form" (("ctx") ("form" . "a")) (("ctx") ("form" . "b"))))
-  (parsed (stx->json (as-syntax '(a b)))))
+  '(("ctx") ("form" (("ctx") ("form" . "a") ("span" 1 2))
+                    (("ctx") ("form" . "b") ("span" 3 4)))
+    ("span" 0 5))
+  (parsed (stx->json (string->stx "(a b)"))))
 
 ;;; Store
 (test-equal "store-init"
@@ -61,8 +64,9 @@
 
 ;;; Environment
 (test-equal "env"
-  '(("a:4" (("ctx") ("form" . "z"))) ("m:6" ("fun" ("var" "s") ("var" "s"))))
-  (parsed (env->json (list (cons 'a:4 (as-syntax 'z))
+  '(("a:4" (("ctx") ("form" . "z") ("span" 0 1)))
+    ("m:6" ("fun" ("var" "s") ("var" "s"))))
+  (parsed (env->json (list (cons 'a:4 (string->stx "z"))
                            (cons 'm:6 '(fun (var s) (var s)))))))
 
 (test-end "ssv-serialize")

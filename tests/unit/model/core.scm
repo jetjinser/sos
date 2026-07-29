@@ -11,7 +11,7 @@
 (test-begin "model-core")
 
 (define (run input)
-  (receive (expanded store) (expand (as-syntax input) (primitives-env) (init-store))
+  (receive (expanded store) (expand input (primitives-env) (init-store))
     (parse expanded store)))
 
 (test-assert "simple-macro"

@@ -22,7 +22,7 @@
             subst eval-ast
             parse
             expand
-            as-syntax init-store primitives-env))
+            init-store primitives-env))
 
 ;;; ----------------------------------------
 ;;; Data structures
@@ -364,13 +364,6 @@
 
 ;;; ----------------------------------------
 ;;; Helpers
-
-(define (as-syntax datum)
-  (cond
-   [(pair? datum)
-    (make-stx (map as-syntax datum) '() #f)]
-   [else
-    (make-stx datum '() #f)]))
 
 (define (init-store)
   (make-store 0 '() '() '()))
