@@ -25,7 +25,7 @@
 
 (blueprint
   (configuration ssv-configuration)
-  (buildables (append ssv-modules (list model-wasm-tests app-wasm) web-static))
+  (buildables (append ssv-modules (list model-wasm-tests app-wasm web-bundle) web-static))
   (testables ssv-tests)
   (commands
     (list install-command check-wasm-command serve-command)))

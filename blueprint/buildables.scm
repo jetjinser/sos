@@ -3,7 +3,8 @@
   #:use-module (blue stencils copy-file)
   #:use-module (blue stencils guile)
   #:use-module (blueprint stencils hoot)
-  #:export (ssv-modules model-wasm-tests app-wasm web-static))
+  #:use-module (blueprint stencils esbuild)
+  #:export (ssv-modules model-wasm-tests app-wasm web-bundle web-static))
 
 (define +ssv-sources+
   '())
@@ -56,11 +57,27 @@
     (load-paths #%~(list #%?srcdir (string-append #%?srcdir "/model")))
     (bundle? #t)))
 
-;;; Static front-end files copied next to app.wasm into the served directory.
+;;; Bundle the front-end application (Lit components + wasm bridge) via esbuild.
+(define +web-sources+
+  '("web/src/wasm.js"
+    "web/src/components/code-input.js"
+    "web/src/components/stx-tree.js"
+    "web/src/components/store-panel.js"
+    "web/src/components/step-controls.js"
+    "web/src/components/ast-view.js"
+    "web/src/lib/scope-colors.js"
+    "web/src/lib/sexpr.js"
+    "package-lock.json"))
+
+(define web-bundle
+  (esbuild-bundle
+    (inputs "web/src/app.js")
+    (requirements +web-sources+)
+    (outputs "web/app.js")))
+
+;;; Static front-end files copied next to the bundle into the served directory.
 (define +web-static+
-  '("web/index.html"
-    "web/src/main.js"
-    "web/src/wasm.js"))
+  '("web/index.html"))
 
 (define web-static
   (map (λ (file)
