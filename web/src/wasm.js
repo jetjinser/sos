@@ -9,7 +9,7 @@ export async function init() {
   runModelProc = loaded[0];
 }
 
-// Expand INPUT-SRC under MODEL ("core" | "phases"); return the parsed trace.
+// Expand INPUT-SRC under MODEL ("core" | "phases" | "local" | "defs"); return the parsed trace.
 export function runModel(model, inputSrc) {
   const [result] = runModelProc.call(model, inputSrc);
   return JSON.parse(result.reflector.string_value(result));
