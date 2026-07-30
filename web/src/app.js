@@ -6,7 +6,7 @@ import "./components/code-input.js";
 import "./components/stx-tree.js";
 import "./components/store-panel.js";
 import "./components/step-controls.js";
-import "./components/ast-view.js";
+import "./components/source-view.js";
 
 const STX_OPS = new Set(["stx-add", "stx-flip", "stx-prune"]);
 
@@ -18,6 +18,7 @@ export class SsvApp extends LitElement {
     _speed: { state: true },
     _loading: { state: true },
     _error: { state: true },
+    _src: { state: true },
   };
 
   static styles = css`
@@ -57,16 +58,25 @@ export class SsvApp extends LitElement {
     .placeholder { color: #99a; font-style: italic; padding: 1.2rem 0.4rem; }
     .error { color: #a00; padding: 0.5rem; }
 
-    .result {
-      background: hsl(160 30% 98% / 0.9);
-      border: 1px solid hsl(160 25% 80%);
-      border-left: 4px solid hsl(160 50% 45%);
+    .source-panel {
+      background: hsl(48 45% 98% / 0.92);
+      border: 1px solid hsl(40 30% 82%);
+      border-left: 4px solid hsl(40 70% 52%);
       border-radius: 6px;
-      padding: 0.45rem 0.7rem;
-      max-height: 13em; overflow: auto;
+      padding: 0.45rem 0.8rem;
+      min-height: 9em; max-height: 38vh; overflow: auto;
       box-shadow: 0 1px 3px hsl(220 30% 20% / 0.06);
     }
-    .result .panel-label b { color: hsl(160 55% 30%); }
+    .source-panel .panel-label { color: hsl(38 30% 45%); }
+    .step-tag {
+      margin-left: 0.5rem;
+      font-size: 0.66rem; letter-spacing: 0.05em;
+      color: hsl(38 45% 38%);
+      background: hsl(40 60% 90%);
+      border: 1px solid hsl(40 40% 78%);
+      border-radius: 8px;
+      padding: 0 7px;
+    }
 
     ssv-stx-tree { animation: step-in 200ms ease-out; display: block; }
     @keyframes step-in {
@@ -109,6 +119,7 @@ export class SsvApp extends LitElement {
     this._loading = true;
     this._error = null;
     this._timer = null;
+    this._src = "";
   }
 
   async connectedCallback() {
@@ -201,11 +212,18 @@ export class SsvApp extends LitElement {
         </div>
       </div>
 
-      <div class="result">
-        <div class="panel-label">parsed ast</div>
+      <div class="source-panel">
+        <div class="panel-label">source · scopes
+          ${this._trace && step
+            ? html`<span class="step-tag">${this._index + 1}/${this._trace.steps.length}</span>`
+            : nothing}
+        </div>
         ${this._trace
-          ? html`<ssv-ast-view .ast=${this._trace["final-ast"]}></ssv-ast-view>`
-          : html`<span class="placeholder">Run to see the parsed result</span>`}
+          ? html`<ssv-source-view
+              .src=${this._src}
+              .snapshot=${this._trace.snapshots?.[this._index] ?? null}
+              .resolve=${this._trace.resolve ?? null}></ssv-source-view>`
+          : html`<span class="placeholder">Run to see scopes painted on your code</span>`}
       </div>
     `;
   }
@@ -247,6 +265,7 @@ export class SsvApp extends LitElement {
     this._playing = false;
     try {
       this._trace = runModel(model, input);
+      this._src = input;
       this._index = 0;
       this._error = null;
     } catch (err) {
