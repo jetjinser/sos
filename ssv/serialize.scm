@@ -9,6 +9,8 @@
             ctx->json
             env->json
             value->json
+            snapshots->json
+            resolve->json
             json-string
             json-escape-string
             json-array
@@ -89,6 +91,29 @@
           (list (cons "span" (json-array (list (json-number (car span))
                                                (json-number (cdr span))))))
           '())))))
+
+;;; ----------------------------------------
+;;; Annotations (per-step scope snapshots, final resolve names)
+;;; A snapshot is an alist (span . ctx); a resolve list is an alist (span . name).
+
+(define (snapshots->json snapshots)
+  (json-array
+   (map (lambda (snap)
+          (json-array
+           (map (lambda (e)
+                  (json-array (list (json-number (caar e))
+                                    (json-number (cdar e))
+                                    (ctx->json (cdr e)))))
+                snap)))
+        snapshots)))
+
+(define (resolve->json resolve)
+  (json-array
+   (map (lambda (e)
+          (json-array (list (json-number (caar e))
+                            (json-number (cdar e))
+                            (json-symbol (cdr e)))))
+        resolve)))
 
 ;;; ----------------------------------------
 ;;; Store

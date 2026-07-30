@@ -4,12 +4,14 @@
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (tests unit ssv trace)
+  #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-64)
   #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (phases-model)
   #:use-module (local-model)
   #:use-module (defs-model)
+  #:use-module (ssv source)
   #:use-module (ssv trace)
   #:use-module (tests unit model harness)
   #:use-module (json))
@@ -60,6 +62,8 @@
     (and (member "model" keys)
          (member "input" keys)
          (member "steps" keys)
+         (member "snapshots" keys)
+         (member "resolve" keys)
          (member "final-stx" keys)
          (member "final-ast" keys)
          (member "final-store" keys))))
@@ -81,5 +85,38 @@
                      (vector->list steps))))
     (and (member "rule" types)
          (member "op" types))))
+
+;;; ----------------------------------------
+;;; annotation fields (snapshots, resolve)
+
+(define lz-json
+  (json-string->scm (trace->json (run-traced 'core (string->stx "(lambda z z)")))))
+
+(test-assert "json-snapshots-parallel-to-steps"
+  (let ((snaps (jref lz-json "snapshots"))
+        (steps (jref lz-json "steps")))
+    (and (vector? snaps)
+         (= (vector-length snaps) (vector-length steps)))))
+
+(test-assert "json-snapshot-entry-shape"
+  (let* ((snaps (jref lz-json "snapshots"))
+         (last  (vector-ref snaps (- (vector-length snaps) 1))))
+    (and (> (vector-length last) 0)
+         (every (lambda (e)
+                  (and (vector? e)
+                       (number? (vector-ref e 0))
+                       (number? (vector-ref e 1))))
+                (vector->list last)))))
+
+(test-assert "json-resolve-entry-shape"
+  (let ((resolve (jref lz-json "resolve")))
+    (and (vector? resolve)
+         (> (vector-length resolve) 0)
+         (every (lambda (e)
+                  (and (vector? e)
+                       (number? (vector-ref e 0))
+                       (number? (vector-ref e 1))
+                       (string? (vector-ref e 2))))
+                (vector->list resolve)))))
 
 (test-end "ssv-trace")

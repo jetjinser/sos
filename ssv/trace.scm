@@ -12,19 +12,25 @@
   #:use-module (defs-model)
   #:use-module (ssv emit)
   #:use-module (ssv serialize)
+  #:use-module (ssv annotate)
   #:export (run-traced
             trace->json))
 
 ;;; ----------------------------------------
 ;;; Entry point
 
-(define (trace-result model datum expanded store ast)
-  (list (cons 'model model)
-        (cons 'input datum)
-        (cons 'steps (trace-records))
-        (cons 'final-stx expanded)
-        (cons 'final-ast ast)
-        (cons 'final-store store)))
+(define (ph-resolve-0 id store) (ph-resolve 0 id store))
+
+(define (trace-result model stx expanded store ast resolve-proc)
+  (let ((steps (trace-records)))
+    (list (cons 'model model)
+          (cons 'input stx)
+          (cons 'steps steps)
+          (cons 'final-stx expanded)
+          (cons 'final-ast ast)
+          (cons 'final-store store)
+          (cons 'snapshots (step-snapshots stx steps))
+          (cons 'resolve (resolve-alist expanded store resolve-proc)))))
 
 (define (run-traced model stx)
   (reset-trace!)
@@ -33,20 +39,20 @@
          (case model
            [(core)
             (receive (expanded store) (expand stx (primitives-env) (init-store))
-              (trace-result model stx expanded store (parse expanded store)))]
+              (trace-result model stx expanded store (parse expanded store) resolve))]
            [(phases)
             (receive (expanded store) (ph-expand 0 stx (primitives-env) '() (init-store))
-              (trace-result model stx expanded store (ph-parse 0 expanded store)))]
+              (trace-result model stx expanded store (ph-parse 0 expanded store) ph-resolve-0))]
            [(local)
             (receive (expanded s*) (loc-expand 0 stx (primitives-env)
                                                (list (init-store) '() '()))
               (let ((store (car s*)))
-                (trace-result model stx expanded store (ph-parse 0 expanded store))))]
+                (trace-result model stx expanded store (ph-parse 0 expanded store) ph-resolve-0)))]
            [(defs)
             (receive (expanded s*) (defs-expand 0 stx (primitives-env)
                                                 (list (init-store) '() '()))
               (let ((store (car s*)))
-                (trace-result model stx expanded store (ph-parse 0 expanded store))))]
+                (trace-result model stx expanded store (ph-parse 0 expanded store) ph-resolve-0)))]
            [else (error "run-traced: unknown model" model)])])
     (tracing-off!)
     result))
@@ -82,6 +88,8 @@
     (list (cons "model"       (json-string (symbol->string (cdr (assq 'model tr)))))
           (cons "input"       (value->json (cdr (assq 'input tr))))
           (cons "steps"       (json-array (map record->json (cdr (assq 'steps tr)))))
+          (cons "snapshots"   (snapshots->json (cdr (assq 'snapshots tr))))
+          (cons "resolve"     (resolve->json (cdr (assq 'resolve tr))))
           (cons "final-stx"   (value->json (cdr (assq 'final-stx tr))))
           (cons "final-ast"   (value->json (cdr (assq 'final-ast tr))))
           (cons "final-store" (value->json (cdr (assq 'final-store tr)))))))
