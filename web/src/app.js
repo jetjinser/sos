@@ -207,7 +207,7 @@ export class SsvApp extends LitElement {
       this._runError = null;
     } catch (err) {
       this._trace = null;
-      this._runError = String(err?.message ?? err);
+      this._runError = (err && (err.message || String(err))) || "expansion failed";
     }
   }
 

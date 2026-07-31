@@ -11,6 +11,15 @@ export async function init() {
 
 // Expand INPUT-SRC under MODEL ("core" | "phases" | "local" | "defs"); return the parsed trace.
 export function runModel(model, inputSrc) {
-  const [result] = runModelProc.call(model, inputSrc);
-  return JSON.parse(result.reflector.string_value(result));
+  try {
+    const [result] = runModelProc.call(model, inputSrc);
+    return JSON.parse(result.reflector.string_value(result));
+  } catch (err) {
+    // Scheme exceptions surface as SchemeTrapError: an empty .message but a
+    // reflective .data payload. Render it readably so the UI can show it.
+    if (err && err.data !== undefined && typeof repr === "function") {
+      throw new Error(repr(err.data));
+    }
+    throw err;
+  }
 }
