@@ -1,14 +1,19 @@
 import { LitElement, html, css, nothing } from "lit";
-import { keyed } from "lit/directives/keyed.js";
 import { init, runModel } from "./wasm.js";
-import { scopeColor } from "./lib/scope-colors.js";
 import "./components/code-input.js";
-import "./components/stx-tree.js";
 import "./components/store-panel.js";
 import "./components/step-controls.js";
 import "./components/source-view.js";
 
-const STX_OPS = new Set(["stx-add", "stx-flip", "stx-prune"]);
+const EXAMPLES = {
+  core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
+  phases:
+    "(lambda z (let-syntax x (lambda s (MKS (LIST (syntax lambda) (syntax z) (CAR (CDR (SE s)))) (syntax here))) (x z)))",
+  local:
+    "(let-syntax q (lambda s (syntax (CAR 8))) (let-syntax x (lambda s (CAR (CDR (SE (LOCAL-EXPAND (CAR (CDR (SE s))) (LIST)))))) (x (q))))",
+  defs:
+    "(let-syntax call (lambda s (MKS (LIST (CAR (CDR (SE s)))) (syntax here))) (let-syntax p (lambda s (syntax 0)) (let-syntax q (lambda s ((lambda defs ((lambda ignored (MKS (LIST (syntax lambda) (LOCAL-BINDER (CAR (CDR (SE (LOCAL-EXPAND (MKS (LIST (syntax quote) (CAR (CDR (SE s)))) (syntax here)) (LIST) defs))))) (LOCAL-EXPAND (CAR (CDR (CDR (SE s)))) (LIST (syntax call)) defs)) (syntax here))) (DEF-BIND defs (CAR (CDR (SE s)))))) (NEW-DEFS))) (q p (call p)))))",
+};
 
 export class SsvApp extends LitElement {
   static properties = {
@@ -17,14 +22,16 @@ export class SsvApp extends LitElement {
     _playing: { state: true },
     _speed: { state: true },
     _loading: { state: true },
-    _error: { state: true },
+    _loadError: { state: true },
+    _runError: { state: true },
     _src: { state: true },
+    _model: { state: true },
   };
 
   static styles = css`
     :host {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto 1fr;
       height: 100vh; box-sizing: border-box;
       padding: 0.7rem;
       gap: 0.55rem;
@@ -35,13 +42,26 @@ export class SsvApp extends LitElement {
         radial-gradient(hsl(220 15% 88%) 1px, transparent 1px) 0 0 / 22px 22px,
         hsl(220 20% 98%);
     }
+    .topbar {
+      display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+    }
     .main {
       display: grid;
-      grid-template-columns: 1fr 1fr minmax(15em, 0.72fr);
+      grid-template-columns: 1fr minmax(15em, 18em);
       gap: 0.55rem;
-      overflow: hidden; min-height: 0;
+      min-height: 0; overflow: hidden;
     }
-    .panel {
+    .editor-panel {
+      display: flex; flex-direction: column;
+      min-height: 0; overflow: hidden;
+      background: hsl(48 45% 98% / 0.92);
+      border: 1px solid hsl(40 30% 82%);
+      border-left: 4px solid hsl(40 70% 52%);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      box-shadow: 0 1px 3px hsl(220 30% 20% / 0.06);
+    }
+    .side {
       overflow: auto; min-height: 0;
       background: hsl(0 0% 100% / 0.82);
       border: 1px solid hsl(220 15% 84%);
@@ -54,60 +74,23 @@ export class SsvApp extends LitElement {
       text-transform: uppercase; color: hsl(220 12% 55%);
       margin-bottom: 0.4rem;
     }
-    .panel-label b { color: hsl(220 45% 38%); }
-    .placeholder { color: #99a; font-style: italic; padding: 1.2rem 0.4rem; }
     .error { color: #a00; padding: 0.5rem; }
-
-    .source-panel {
-      background: hsl(48 45% 98% / 0.92);
-      border: 1px solid hsl(40 30% 82%);
-      border-left: 4px solid hsl(40 70% 52%);
-      border-radius: 6px;
-      padding: 0.45rem 0.8rem;
-      min-height: 9em; max-height: 38vh; overflow: auto;
-      box-shadow: 0 1px 3px hsl(220 30% 20% / 0.06);
+    .run-error {
+      font-size: 0.72rem;
+      color: hsl(4 60% 38%);
+      background: hsl(4 70% 96%);
+      border: 1px solid hsl(4 50% 82%);
+      border-left: 3px solid hsl(4 60% 50%);
+      border-radius: 4px;
+      padding: 0.3rem 0.6rem;
+      margin-bottom: 0.45rem;
+      flex-shrink: 0;
+      animation: run-error-in 200ms ease-out;
     }
-    .source-panel .panel-label { color: hsl(38 30% 45%); }
-    .step-tag {
-      margin-left: 0.5rem;
-      font-size: 0.66rem; letter-spacing: 0.05em;
-      color: hsl(38 45% 38%);
-      background: hsl(40 60% 90%);
-      border: 1px solid hsl(40 40% 78%);
-      border-radius: 8px;
-      padding: 0 7px;
+    @keyframes run-error-in {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: none; }
     }
-
-    ssv-stx-tree { animation: step-in 200ms ease-out; display: block; }
-    @keyframes step-in {
-      from { opacity: 0.15; transform: translateY(5px); }
-      to   { opacity: 1;    transform: none; }
-    }
-
-    .op-card { animation: step-in 200ms ease-out; padding: 0.3rem 0.1rem; }
-    .op-card .kind {
-      display: inline-block; font-weight: 700; font-size: 0.85rem;
-      color: hsl(16 60% 40%); background: hsl(16 70% 94%);
-      border: 1px solid hsl(16 50% 80%);
-      padding: 0.1rem 0.5rem; border-radius: 4px; margin-bottom: 0.5rem;
-    }
-    .op-card .row { margin: 0.25rem 0; font-size: 0.8rem; color: #445; }
-    .op-card .fresh {
-      display: inline-block; font-weight: 700;
-      padding: 0.05rem 0.45rem; border-radius: 4px;
-      color: #fff; animation: pop 350ms ease-out;
-    }
-    @keyframes pop {
-      0%   { transform: scale(0.6); }
-      60%  { transform: scale(1.15); }
-      100% { transform: scale(1); }
-    }
-    .scp {
-      font-size: 0.7rem; padding: 0 4px; border-radius: 3px;
-      color: #fff; display: inline-block; margin: 1px;
-      transition: transform 120ms ease;
-    }
-    .scp:hover { transform: scale(1.12); }
   `;
 
   constructor() {
@@ -117,9 +100,12 @@ export class SsvApp extends LitElement {
     this._playing = false;
     this._speed = 500;
     this._loading = true;
-    this._error = null;
+    this._loadError = null;
+    this._runError = null;
     this._timer = null;
+    this._debounce = null;
     this._src = "";
+    this._model = "core";
   }
 
   async connectedCallback() {
@@ -127,9 +113,11 @@ export class SsvApp extends LitElement {
     try {
       await init();
       this._loading = false;
+      this._src = EXAMPLES[this._model];
+      this._run();
     } catch (e) {
       this._loading = false;
-      this._error = e instanceof WebAssembly.CompileError
+      this._loadError = e instanceof WebAssembly.CompileError
         ? "Wasm GC + tail call required (Firefox / Chrome latest)"
         : String(e);
     }
@@ -139,6 +127,7 @@ export class SsvApp extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopTimer();
+    clearTimeout(this._debounce);
     this.removeEventListener("keydown", this._onKey);
   }
 
@@ -146,35 +135,17 @@ export class SsvApp extends LitElement {
     return this._trace?.steps?.[this._index] ?? null;
   }
 
-  get _beforeStx() {
-    const s = this._step;
-    if (!s) return null;
-    if (s.type === "rule") return s.before ?? null;
-    if (s.type === "op" && STX_OPS.has(s.op)) return s.data?.[1] ?? null;
-    return null;
-  }
-
-  get _afterStx() {
-    const s = this._step;
-    if (!s) return null;
-    if (s.type === "rule") return s.after ?? null;
-    if (s.type === "op" && STX_OPS.has(s.op)) return s.data?.[2] ?? null;
-    return null;
-  }
-
   get _currentStore() {
     return this._trace?.stores?.[this._index] ?? null;
   }
 
   render() {
-    if (this._error) return html`<div class="error">${this._error}</div>`;
-
-    const step = this._step;
-    const isStxView = step && (step.type === "rule" || STX_OPS.has(step.op));
+    if (this._loadError) return html`<div class="error">${this._loadError}</div>`;
 
     return html`
-      <ssv-code-input .loading=${this._loading}
-                      @run=${this._onRun}>
+      <div class="topbar">
+        <ssv-code-input .model=${this._model} .loading=${this._loading}
+                        @model-change=${this._onModel}></ssv-code-input>
         <ssv-step-controls
           .steps=${this._trace?.steps ?? []}
           .index=${this._index}
@@ -183,91 +154,60 @@ export class SsvApp extends LitElement {
           @step-to=${this._onStepTo}
           @play-toggle=${this._onPlayToggle}
           @speed-change=${this._onSpeed}></ssv-step-controls>
-      </ssv-code-input>
-
-      <div class="main">
-        <div class="panel">
-          <div class="panel-label">before expand</div>
-          ${this._trace
-            ? (isStxView
-                ? keyed(this._index, html`<ssv-stx-tree .stx=${this._beforeStx}></ssv-stx-tree>`)
-                : this._opCard(step))
-            : html`<span class="placeholder">Run to see the expansion trace</span>`}
-        </div>
-        <div class="panel">
-          <div class="panel-label">after expand</div>
-          ${this._trace && isStxView
-            ? keyed(this._index, html`<ssv-stx-tree .stx=${this._afterStx}></ssv-stx-tree>`)
-            : nothing}
-        </div>
-        <div class="panel">
-          <div class="panel-label">store status</div>
-          ${this._trace && step
-            ? keyed(this._index, html`<ssv-store-panel .store=${this._currentStore}></ssv-store-panel>`)
-            : nothing}
-        </div>
       </div>
 
-      <div class="source-panel">
-        <div class="panel-label">source · scopes
-          ${this._trace && step
-            ? html`<span class="step-tag">${this._index + 1}/${this._trace.steps.length}</span>`
+      <div class="main">
+        <div class="editor-panel">
+          ${this._runError
+            ? html`<div class="run-error">${this._runError}</div>`
+            : nothing}
+          <ssv-source-view editable
+            .src=${this._src}
+            .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
+            .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
+            .resolve=${this._trace?.resolve ?? null}
+            @code-input=${this._onCodeInput}></ssv-source-view>
+        </div>
+        <div class="side">
+          <div class="panel-label">store</div>
+          ${this._trace
+            ? html`<ssv-store-panel .store=${this._currentStore}></ssv-store-panel>`
             : nothing}
         </div>
-        ${this._trace
-          ? html`<ssv-source-view
-              .src=${this._src}
-              .snapshot=${this._trace.snapshots?.[this._index] ?? null}
-              .prevSnapshot=${this._index > 0 ? this._trace.snapshots?.[this._index - 1] ?? null : null}
-              .resolve=${this._trace.resolve ?? null}></ssv-source-view>`
-          : html`<span class="placeholder">Run to see scopes painted on your code</span>`}
       </div>
     `;
   }
 
-  _opCard(step) {
-    const data = step.data ?? [];
-    if (step.op === "bind") {
-      const [sym, scopes, name] = data;
-      return html`
-        <div class="op-card">
-          <span class="kind">store-bind</span>
-          <div class="row">sym: <strong>${sym}</strong></div>
-          <div class="row">scopes:
-            ${(scopes ?? []).map((sc) =>
-              html`<span class="scp" style="background:${scopeColor(sc)}">${sc}</span>`)}
-          </div>
-          <div class="row">→ name:
-            <span class="fresh" style="background:${scopeColor(name)}">${name}</span>
-          </div>
-        </div>`;
-    }
-    if (step.op === "alloc-name" || step.op === "alloc-scope") {
-      const [name] = data;
-      return html`
-        <div class="op-card">
-          <span class="kind">${step.op}</span>
-          <div class="row">fresh:
-            <span class="fresh" style="background:${scopeColor(name)}">${name}</span>
-          </div>
-        </div>`;
-    }
-    return html`<div class="op-card"><span class="kind">${step.op}</span>
-      <div class="row">${JSON.stringify(data)}</div></div>`;
+  _onModel(e) {
+    this._model = e.detail.model;
+    this._src = EXAMPLES[this._model] ?? "";
+    this._run();
   }
 
-  _onRun(e) {
-    const { model, input } = e.detail;
-    this._stopTimer();
+  _onCodeInput(e) {
+    this._src = e.detail.value;
     this._playing = false;
+    this._stopTimer();
+    clearTimeout(this._debounce);
+    this._debounce = setTimeout(() => this._run(), 250);
+  }
+
+  _run() {
+    // Empty input is "nothing to expand", not an error: keep the editor clean
+    // and typeable instead of surfacing a parse failure.
+    if (!this._src.trim()) {
+      this._trace = null;
+      this._runError = null;
+      return;
+    }
     try {
-      this._trace = runModel(model, input);
-      this._src = input;
-      this._index = 0;
-      this._error = null;
+      this._trace = runModel(this._model, this._src);
+      const n = this._trace?.steps?.length ?? 0;
+      this._index = n > 0 ? n - 1 : 0;
+      this._runError = null;
     } catch (err) {
       this._trace = null;
-      this._error = String(err?.message ?? err);
+      this._runError = String(err?.message ?? err);
     }
   }
 

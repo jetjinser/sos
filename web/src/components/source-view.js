@@ -23,16 +23,19 @@ export class SsvSourceView extends LitElement {
     snapshot: { type: Array },
     prevSnapshot: { type: Array },
     resolve: { type: Array },
+    editable: { type: Boolean },
   };
 
+  // Text metrics shared by the highlight layer and the editing textarea so
+  // they stay perfectly aligned.
   static styles = css`
-    :host { display: block; font-family: inherit; }
+    :host { display: flex; flex-direction: column; font-family: inherit; height: 100%; min-height: 0; }
 
     /* ---- scope legend ---- */
     .legend {
       display: flex; flex-wrap: wrap; align-items: center;
       gap: 4px 8px;
-      margin-bottom: 0.45rem; padding-bottom: 0.35rem;
+      margin-bottom: 0.4rem; padding-bottom: 0.3rem;
       border-bottom: 1px dashed hsl(40 25% 80%);
     }
     .legend-title {
@@ -43,79 +46,86 @@ export class SsvSourceView extends LitElement {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 0.66rem; color: hsl(222 20% 36%);
       padding: 1px 7px 1px 5px; border-radius: 8px;
-      background: hsl(40 35% 96%);
-      border: 1px solid hsl(40 25% 84%);
+      background: hsl(40 35% 96%); border: 1px solid hsl(40 25% 84%);
       cursor: default;
       transition: transform 120ms ease, box-shadow 120ms ease;
     }
-    .lgd:hover, .lgd.on {
-      box-shadow: 0 0 0 2px var(--scp);
-      transform: translateY(-1px);
-    }
+    .lgd:hover, .lgd.on { box-shadow: 0 0 0 2px var(--scp); transform: translateY(-1px); }
     .lgd .sw { width: 9px; height: 9px; border-radius: 2px; background: var(--scp); }
 
-    /* ---- code ---- */
-    .code {
-      white-space: pre-wrap; word-break: break-word;
-      font-size: 0.86rem; line-height: 1.8;
-      color: hsl(222 22% 26%);
-      padding: 0.2rem 0.1rem;
-    }
-    .seg { border-radius: 2px; }
-    .kw { font-weight: 700; }
+    /* ---- editor shell ---- */
+    .editor { position: relative; flex: 1; min-height: 0; }
+    .highlight { position: absolute; inset: 0; overflow: hidden; }
+    .editor.editing .highlight { pointer-events: none; }
 
+    .input, .code {
+      font-family: inherit;
+      font-size: 0.86rem;
+      line-height: 2.1;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      padding: 0.35rem 0.5rem;
+      margin: 0;
+      border: none;
+      box-sizing: border-box;
+    }
+    .input {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      resize: none; outline: none;
+      background: transparent;
+      color: transparent;
+      caret-color: hsl(222 40% 30%);
+      overflow: auto;
+    }
+    .input::selection { background: hsl(215 70% 80% / 0.45); }
+
+    .code { color: hsl(222 22% 26%); min-height: 100%; }
+
+    /* ---- segments ---- */
+    .seg { border-radius: 2px; position: relative; }
+    .kw { font-weight: 700; }
     .seg.tinted {
       background: var(--scp-bg);
       box-shadow: inset 0 -2px 0 var(--scp);
       transition: background-color 220ms ease, filter 160ms ease;
     }
-    .seg.tinted:hover { filter: saturate(1.35) brightness(0.97); }
-
-    /* changed at the current step */
     .seg.fresh {
       outline: 2px solid var(--fresh-c, hsl(220 20% 60%));
       outline-offset: -1px;
       animation: fresh-in 550ms ease-out;
     }
     @keyframes fresh-in { from { opacity: 0.15; } to { opacity: 1; } }
-
-    /* hovered from the legend */
     .seg.focus {
       outline: 2px solid var(--scp);
       outline-offset: -1px;
-      position: relative; z-index: 1;
+      z-index: 2;
     }
 
-    /* resolve chip (final binding) */
+    /* ---- floating badges (out of flow so the textarea stays aligned) ---- */
+    .chip, .dtag {
+      position: absolute;
+      z-index: 3;
+      font-size: 0.58rem; line-height: 1.4;
+      padding: 0 4px; border-radius: 6px;
+      white-space: nowrap;
+      animation: pop-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
     .chip {
-      display: inline-block; vertical-align: middle;
-      margin: 0 4px 0 1px; padding: 0 5px; border-radius: 7px;
-      font-size: 0.62rem; line-height: 1.5; color: #fff; white-space: nowrap;
-      transform: translateY(-1px);
-      animation: pop-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
-      transition: transform 120ms ease;
+      left: 0; bottom: 100%; margin-bottom: 1px;
+      color: #fff; background: var(--scp);
     }
-    .chip:hover { transform: translateY(-1px) scale(1.18); }
-
-    /* step-delta tag (+added / -removed scope) */
-    .dtag {
-      display: inline-block; vertical-align: middle;
-      margin: 0 3px; padding: 0 4px; border-radius: 6px;
-      font-size: 0.6rem; line-height: 1.5; white-space: nowrap;
-      transform: translateY(-2px);
-      animation: pop-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
+    .dtag { left: 0; top: 100%; margin-top: 1px; }
     .dtag.add {
       color: var(--scp); border: 1px solid var(--scp);
-      background: hsl(0 0% 100% / 0.9); font-weight: 700;
+      background: hsl(0 0% 100% / 0.92); font-weight: 700;
     }
     .dtag.rem {
       color: hsl(220 10% 55%); border: 1px solid hsl(220 12% 76%);
-      background: hsl(0 0% 100% / 0.6); text-decoration: line-through;
+      background: hsl(0 0% 100% / 0.7); text-decoration: line-through;
     }
     @keyframes pop-in {
-      0% { opacity: 0; transform: translateY(-2px) scale(0.5); }
-      100% { opacity: 1; transform: translateY(-2px) scale(1); }
+      0% { opacity: 0; transform: scale(0.5); }
+      100% { opacity: 1; transform: scale(1); }
     }
 
     .empty { color: #99a; font-style: italic; }
@@ -127,10 +137,13 @@ export class SsvSourceView extends LitElement {
     this.snapshot = null;
     this.prevSnapshot = null;
     this.resolve = null;
+    this.editable = false;
   }
 
   render() {
-    if (!this.src) return html`<span class="empty">—</span>`;
+    // In editable mode the textarea must always exist so the user can (re)type
+    // after clearing everything; only the read-only view shows a placeholder.
+    if (!this.src && !this.editable) return html`<span class="empty">—</span>`;
 
     const tokens = tokenizeSource(this.src);
     const spans = this.snapshot ?? [];
@@ -144,12 +157,50 @@ export class SsvSourceView extends LitElement {
       const a = points[k];
       const b = points[k + 1];
       if (a >= b) continue;
-      if (tags.has(a)) segs.push(...tags.get(a));
-      segs.push(this._segment(this.src.slice(a, b), tokens, spans, prevSpans, a, b));
-      if (chips.has(b)) segs.push(...chips.get(b));
+      segs.push(
+        this._segment(
+          this.src.slice(a, b), tokens, spans, prevSpans, a, b,
+          tags.get(a) ?? [], chips.get(b) ?? [],
+        ),
+      );
     }
+    const code = html`<div class="code">${segs}</div>`;
+    const legend = this._legend(spans);
 
-    return html`${this._legend(spans)}<div class="code">${segs}</div>`;
+    if (!this.editable) return html`${legend}${code}`;
+
+    return html`${legend}
+      <div class="editor editing">
+        <div class="highlight">${code}</div>
+        <textarea class="input" spellcheck="false" wrap="soft"
+                  @input=${this._onInput}
+                  @scroll=${this._onScroll}></textarea>
+      </div>`;
+  }
+
+  // Keep the textarea in sync without clobbering the caret while typing: only
+  // assign when the value actually differs (e.g. an example was loaded).
+  updated(changed) {
+    if (!this.editable || !changed.has("src")) return;
+    const ta = this.renderRoot.querySelector(".input");
+    if (ta && ta.value !== this.src) ta.value = this.src;
+  }
+
+  firstUpdated() {
+    const ta = this.renderRoot.querySelector(".input");
+    if (ta && ta.value !== this.src) ta.value = this.src;
+  }
+
+  _onInput(e) {
+    this.dispatchEvent(new CustomEvent("code-input", {
+      detail: { value: e.target.value },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _onScroll(e) {
+    const hl = this.renderRoot.querySelector(".highlight");
+    if (hl) { hl.scrollTop = e.target.scrollTop; hl.scrollLeft = e.target.scrollLeft; }
   }
 
   // ---- legend ----------------------------------------------------------
@@ -177,8 +228,6 @@ export class SsvSourceView extends LitElement {
     </div>`;
   }
 
-  // Toggle the "focus" highlight directly on the DOM so hovering the legend
-  // does not re-render (which would replay the step-change animation).
   _setFocus(scope) {
     const root = this.renderRoot;
     for (const el of root.querySelectorAll(".seg.tinted")) {
@@ -200,14 +249,14 @@ export class SsvSourceView extends LitElement {
       seen.add(key);
       if (!map.has(end)) map.set(end, []);
       map.get(end).push(
-        html`<span class="chip" style="background:${scopeColor(name)}"
+        html`<span class="chip" style="--scp:${scopeColor(name)}"
                    title="resolves to ${name}">→ ${name}</span>`,
       );
     }
     return map;
   }
 
-  // ---- step delta (+added / -removed scope tags) -----------------------
+  // ---- step delta tags -------------------------------------------------
 
   _deltaTags(spans, prevSpans) {
     const key = (s, e) => s + "," + e;
@@ -229,14 +278,10 @@ export class SsvSourceView extends LitElement {
         changed.push({ s, e, added: [], removed: ctxScopes(ctx) });
     }
 
-    // Tag only the topmost changed span of each region, not every nested node.
     const topmost = changed.filter(
       (c) =>
         !changed.some(
-          (o) =>
-            o !== c &&
-            o.s <= c.s && c.e <= o.e &&
-            (o.s < c.s || c.e < o.e),
+          (o) => o !== c && o.s <= c.s && c.e <= o.e && (o.s < c.s || c.e < o.e),
         ),
     );
 
@@ -269,7 +314,6 @@ export class SsvSourceView extends LitElement {
     return [...set].sort((x, y) => x - y);
   }
 
-  // The most specific span covering [a, b) supplies its scope set.
   _ctxAt(spans, a, b) {
     let best = null;
     let bestLen = Infinity;
@@ -287,7 +331,7 @@ export class SsvSourceView extends LitElement {
     return null;
   }
 
-  _segment(text, tokens, spans, prevSpans, a, b) {
+  _segment(text, tokens, spans, prevSpans, a, b, startTags, endChips) {
     const tok = this._tokenAt(tokens, a);
     const kind = tok ? (tok.kind === "atom" ? atomKind(tok.text) : tok.kind) : "ws";
     const scopesNow = this._ctxAt(spans, a, b);
@@ -315,7 +359,8 @@ export class SsvSourceView extends LitElement {
     }
 
     return html`<span class=${cls} style=${style.join(";")} title=${title}
-                      data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}>${text}</span>`;
+                      data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}
+      >${text}${startTags}${endChips}</span>`;
   }
 }
 
