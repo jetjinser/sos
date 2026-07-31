@@ -36,8 +36,8 @@ export class SsvApp extends LitElement {
       display: grid;
       grid-template-rows: auto 1fr;
       height: 100vh; box-sizing: border-box;
-      padding: 0.7rem;
-      gap: 0.55rem;
+      padding: clamp(1.2rem, 3vw, 3rem);
+      gap: clamp(0.9rem, 1.6vw, 1.4rem);
       font-family: "Iosevka", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
       background:
         radial-gradient(1100px 500px at 85% -10%, hsl(210 60% 96%), transparent 60%),
@@ -46,12 +46,14 @@ export class SsvApp extends LitElement {
         hsl(220 20% 98%);
     }
     .topbar {
-      display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+      display: flex; align-items: center;
+      gap: clamp(0.8rem, 1.6vw, 1.2rem);
+      flex-wrap: wrap;
     }
     .main {
       display: grid;
-      grid-template-columns: 1fr minmax(15em, 18em);
-      gap: 0.55rem;
+      grid-template-columns: 1fr minmax(16em, 19em);
+      gap: clamp(0.9rem, 1.6vw, 1.4rem);
       min-height: 0; overflow: hidden;
     }
     .editor-panel {
@@ -60,33 +62,47 @@ export class SsvApp extends LitElement {
       background: hsl(48 45% 98% / 0.92);
       border: 1px solid hsl(40 30% 82%);
       border-left: 4px solid hsl(40 70% 52%);
-      border-radius: 6px;
-      padding: 0.55rem 0.75rem;
-      box-shadow: 0 1px 3px hsl(220 30% 20% / 0.06);
+      border-radius: 10px;
+      padding: clamp(0.8rem, 1.6vw, 1.2rem) clamp(1rem, 2vw, 1.4rem);
+      box-shadow: 0 1px 2px hsl(220 30% 20% / 0.05),
+                  0 8px 24px hsl(220 30% 30% / 0.07);
     }
     .side {
       overflow: auto; min-height: 0;
-      background: hsl(0 0% 100% / 0.82);
+      background: hsl(0 0% 100% / 0.85);
       border: 1px solid hsl(220 15% 84%);
-      border-radius: 6px;
-      padding: 0.5rem 0.6rem;
-      box-shadow: 0 1px 3px hsl(220 30% 20% / 0.06);
+      border-radius: 10px;
+      padding: clamp(0.8rem, 1.5vw, 1.1rem) clamp(0.9rem, 1.7vw, 1.2rem);
+      box-shadow: 0 1px 2px hsl(220 30% 20% / 0.05),
+                  0 8px 24px hsl(220 30% 30% / 0.07);
     }
     .panel-label {
-      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
-      text-transform: uppercase; color: hsl(220 12% 55%);
-      margin-bottom: 0.4rem;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; color: hsl(220 12% 52%);
+      margin-bottom: 0.75rem;
     }
-    .error { color: #a00; padding: 0.5rem; }
+    .error {
+      grid-row: 1 / -1;
+      place-self: center;
+      max-width: 36em;
+      background: hsl(4 70% 97%);
+      border: 1px solid hsl(4 50% 84%);
+      border-left: 4px solid hsl(4 60% 50%);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      color: hsl(4 55% 34%);
+      font-size: 0.85rem; line-height: 1.65;
+      box-shadow: 0 8px 28px hsl(4 50% 40% / 0.14);
+    }
     .run-error {
       font-size: 0.72rem;
       color: hsl(4 60% 38%);
       background: hsl(4 70% 96%);
       border: 1px solid hsl(4 50% 82%);
       border-left: 3px solid hsl(4 60% 50%);
-      border-radius: 4px;
-      padding: 0.3rem 0.6rem;
-      margin-bottom: 0.45rem;
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      margin-bottom: 0.7rem;
       flex-shrink: 0;
       animation: run-error-in 200ms ease-out;
     }

@@ -25,7 +25,7 @@ export class SsvStepControls extends LitElement {
       transition: transform 100ms ease, background 120ms ease,
                   box-shadow 120ms ease;
     }
-    button.nav { font-size: 1.05rem; line-height: 1; padding: 0.28rem 0.5rem; }
+    button.nav { font-size: 1.05rem; line-height: 1; padding: 0.4rem 0.65rem; }
     button.nav .step-glyph { font-size: 1.25rem; font-weight: 700; line-height: 0.7; }
     button.nav:hover:not(:disabled) {
       background: hsl(220 45% 95%);
@@ -34,7 +34,7 @@ export class SsvStepControls extends LitElement {
     }
     button.nav:active:not(:disabled) { transform: translateY(0); }
     button.play {
-      width: 2.1em; height: 2.1em;
+      width: 2.35em; height: 2.35em;
       display: inline-flex; align-items: center; justify-content: center;
       font-size: 0.9rem;
       border: none; border-radius: 50%;

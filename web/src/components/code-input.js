@@ -13,10 +13,10 @@ export class SsvCodeInput extends LitElement {
       font-size: 0.85rem; color: hsl(220 20% 35%);
     }
     select, button {
-      font-family: inherit; font-size: 0.85rem;
-      padding: 0.22rem 0.5rem;
+      font-family: inherit; font-size: 0.88rem;
+      padding: 0.34rem 0.8rem;
       border: 1px solid hsl(220 15% 78%);
-      border-radius: 5px;
+      border-radius: 6px;
       background: hsl(0 0% 100%);
       color: hsl(220 25% 32%);
       cursor: pointer;
