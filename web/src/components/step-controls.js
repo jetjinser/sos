@@ -1,6 +1,22 @@
 import { LitElement, html, css, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 
+const RULE_HUES = {
+  lambda: 212, "let-syntax": 248,
+  "macro-invoke": 282,
+  app: 198, "fun-app": 198, "prim-app": 188,
+  id: 168,
+  quote: 222, syntax: 262, literal: 222, stops: 222, value: 222,
+  "LOCAL-VALUE": 158, "LOCAL-EXPAND": 302, "LOCAL-BINDER": 318,
+  "NEW-DEFS": 338, "DEF-BIND": 352,
+  BOX: 18, UNBOX: 32, "SET-BOX!": 4,
+};
+
+const OP_HUES = {
+  "stx-add": 145, "stx-flip": 25, "stx-prune": 335,
+  bind: 262, "alloc-name": 185, "alloc-scope": 85,
+};
+
 export class SsvStepControls extends LitElement {
   static properties = {
     steps: { type: Array },
@@ -53,24 +69,30 @@ export class SsvStepControls extends LitElement {
     }
     button:disabled { opacity: 0.35; cursor: default; }
     .pos { color: #556; min-width: 5em; text-align: center; font-variant-numeric: tabular-nums; }
+    /* Category anchored by --cat (rule cool / op warm); per-step kind hue
+       injected as --h; all three colors derived via color-mix */
     .badge {
+      --h: 222;
       display: inline-flex; align-items: stretch;
       border-radius: 3px; overflow: hidden;
       font-weight: bold;
       animation: badge-in 180ms ease-out;
     }
+    .badge.rule { --cat: #246; }
+    .badge.op   { --cat: #642; }
     .badge .kind {
       display: inline-flex; align-items: center;
       font-size: 0.6rem; font-weight: 700;
       letter-spacing: 0.07em; text-transform: uppercase;
       padding: 0 0.36rem;
       color: #fff;
+      background: color-mix(in oklab, var(--cat) 80%, hsl(var(--h) 75% 42%));
     }
-    .badge .name { padding: 0.1rem 0.42rem; }
-    .badge.rule .kind { background: #246; }
-    .badge.rule .name { color: #246; background: #eef; }
-    .badge.op .kind   { background: #642; }
-    .badge.op .name   { color: #642; background: #fee; }
+    .badge .name {
+      padding: 0.1rem 0.42rem;
+      background: color-mix(in oklab, hsl(var(--h) 90% 95%) 80%, var(--cat));
+      color: color-mix(in oklab, var(--cat) 42%, hsl(var(--h) 65% 28%));
+    }
     @keyframes badge-in {
       from { opacity: 0.2; transform: translateX(-4px); }
       to   { opacity: 1;    transform: none; }
@@ -125,14 +147,15 @@ export class SsvStepControls extends LitElement {
         .map(([k, v]) => `${k}:${typeof v === "object" ? JSON.stringify(v) : v}`)
         .join("  ");
       return html`
-        <span class="badge rule">
+        <span class="badge rule"
+              style="--h: ${RULE_HUES[step.rule] ?? 222}">
           <span class="kind">rule</span><span class="name">${step.rule}</span>
         </span>
         ${info ? html`<span class="info">${info}</span>` : nothing}`;
     }
     if (step.type === "op") {
       return html`
-        <span class="badge op">
+        <span class="badge op" style="--h: ${OP_HUES[step.op] ?? 222}">
           <span class="kind">op</span><span class="name">${step.op}</span>
         </span>`;
     }

@@ -36,4 +36,32 @@
     (and (member #\newline (string->list f))
          (equal? (datum f) (datum long-input)))))
 
+;;; ----------------------------------------
+;;; Aggressive breaking
+
+(test-equal "lambda-breaks-on-compound-body"
+  "(lambda (x)\n  (CONS x x))"
+  (format-source "(lambda (x) (CONS x x))"))
+
+(test-equal "lambda-atomic-body-stays-inline"
+  "(lambda (x) x)"
+  (format-source "(lambda (x) x)"))
+
+(test-equal "let-syntax-transformer-own-line"
+  "(let-syntax x\n  (lambda z\n    (syntax\n     (quote 2)))\n  (x 1))"
+  (format-source "(let-syntax x (lambda z (syntax (quote 2))) (x 1))"))
+
+(test-equal "syntax-breaks-around-compound"
+  "(syntax\n (lambda (x) x))"
+  (format-source "(syntax (lambda (x) x))"))
+
+(test-equal "compact-app-stays-inline"
+  "(CAR (CDR (SE s)))"
+  (format-source "(CAR (CDR (SE s)))"))
+
+(test-assert "quote-never-breaks"
+  (let ((f (format-source
+            "(quote (aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee))")))
+    (not (member #\newline (string->list f)))))
+
 (test-end "ssv-format")
