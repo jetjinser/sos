@@ -218,6 +218,7 @@ export class SsvApp extends LitElement {
           ? html`<ssv-source-view
               .src=${this._src}
               .snapshot=${this._trace.snapshots?.[this._index] ?? null}
+              .prevSnapshot=${this._index > 0 ? this._trace.snapshots?.[this._index - 1] ?? null : null}
               .resolve=${this._trace.resolve ?? null}></ssv-source-view>`
           : html`<span class="placeholder">Run to see scopes painted on your code</span>`}
       </div>

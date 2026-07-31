@@ -69,7 +69,7 @@
     "web/src/components/stx-tree.js"
     "web/src/components/store-panel.js"
     "web/src/components/step-controls.js"
-    "web/src/components/ast-view.js"
+    "web/src/components/source-view.js"
     "web/src/lib/scope-colors.js"
     "web/src/lib/sexpr.js"
     "package-lock.json"))
