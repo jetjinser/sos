@@ -20,7 +20,8 @@
     "tests/unit/model/defs.scm"
     "tests/unit/ssv/serialize.scm"
     "tests/unit/ssv/trace.scm"
-    "tests/unit/ssv/annotate.scm"))
+    "tests/unit/ssv/annotate.scm"
+    "tests/unit/ssv/format.scm"))
 
 (define ssv-tests
   (map

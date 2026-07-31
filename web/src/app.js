@@ -1,5 +1,5 @@
 import { LitElement, html, css, nothing } from "lit";
-import { init, runModel } from "./wasm.js";
+import { init, runModel, formatSource } from "./wasm.js";
 import "./components/code-input.js";
 import "./components/store-panel.js";
 import "./components/step-controls.js";
@@ -113,8 +113,7 @@ export class SsvApp extends LitElement {
     try {
       await init();
       this._loading = false;
-      this._src = EXAMPLES[this._model];
-      this._run();
+      this._loadExample(this._model);
     } catch (e) {
       this._loading = false;
       this._loadError = e instanceof WebAssembly.CompileError
@@ -145,7 +144,8 @@ export class SsvApp extends LitElement {
     return html`
       <div class="topbar">
         <ssv-code-input .model=${this._model} .loading=${this._loading}
-                        @model-change=${this._onModel}></ssv-code-input>
+                        @model-change=${this._onModel}
+                        @format=${this._onFormat}></ssv-code-input>
         <ssv-step-controls
           .steps=${this._trace?.steps ?? []}
           .index=${this._index}
@@ -180,8 +180,30 @@ export class SsvApp extends LitElement {
 
   _onModel(e) {
     this._model = e.detail.model;
-    this._src = EXAMPLES[this._model] ?? "";
+    this._loadExample(this._model);
+  }
+
+  // Load a model's example already pretty-printed (fall back to raw if the
+  // formatter is unavailable for any reason).
+  _loadExample(model) {
+    const raw = EXAMPLES[model] ?? "";
+    try {
+      this._src = formatSource(raw);
+    } catch {
+      this._src = raw;
+    }
     this._run();
+  }
+
+  _onFormat() {
+    if (!this._src.trim()) return;
+    try {
+      this._src = formatSource(this._src);
+      this._runError = null;
+      this._run();
+    } catch (err) {
+      this._runError = (err && (err.message || String(err))) || "format failed";
+    }
   }
 
   _onCodeInput(e) {
