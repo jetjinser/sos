@@ -53,16 +53,24 @@ export class SsvStepControls extends LitElement {
     }
     button:disabled { opacity: 0.35; cursor: default; }
     .pos { color: #556; min-width: 5em; text-align: center; font-variant-numeric: tabular-nums; }
-    .rule {
-      font-weight: bold; color: #246;
-      background: #eef; padding: 0.1rem 0.4rem; border-radius: 3px;
+    .badge {
+      display: inline-flex; align-items: stretch;
+      border-radius: 3px; overflow: hidden;
+      font-weight: bold;
       animation: badge-in 180ms ease-out;
     }
-    .op {
-      font-weight: bold; color: #642;
-      background: #fee; padding: 0.1rem 0.4rem; border-radius: 3px;
-      animation: badge-in 180ms ease-out;
+    .badge .kind {
+      display: inline-flex; align-items: center;
+      font-size: 0.6rem; font-weight: 700;
+      letter-spacing: 0.07em; text-transform: uppercase;
+      padding: 0 0.36rem;
+      color: #fff;
     }
+    .badge .name { padding: 0.1rem 0.42rem; }
+    .badge.rule .kind { background: #246; }
+    .badge.rule .name { color: #246; background: #eef; }
+    .badge.op .kind   { background: #642; }
+    .badge.op .name   { color: #642; background: #fee; }
     @keyframes badge-in {
       from { opacity: 0.2; transform: translateX(-4px); }
       to   { opacity: 1;    transform: none; }
@@ -117,11 +125,16 @@ export class SsvStepControls extends LitElement {
         .map(([k, v]) => `${k}:${typeof v === "object" ? JSON.stringify(v) : v}`)
         .join("  ");
       return html`
-        <span class="rule">${step.rule}</span>
+        <span class="badge rule">
+          <span class="kind">rule</span><span class="name">${step.rule}</span>
+        </span>
         ${info ? html`<span class="info">${info}</span>` : nothing}`;
     }
     if (step.type === "op") {
-      return html`<span class="op">op:${step.op}</span>`;
+      return html`
+        <span class="badge op">
+          <span class="kind">op</span><span class="name">${step.op}</span>
+        </span>`;
     }
     return nothing;
   }
