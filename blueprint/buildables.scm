@@ -71,8 +71,10 @@
     "web/src/components/store-panel.js"
     "web/src/components/step-controls.js"
     "web/src/components/source-view.js"
+    "web/src/components/feature-bar.js"
     "web/src/lib/scope-colors.js"
     "web/src/lib/sexpr.js"
+    "web/src/lib/wasm-features.js"
     "package-lock.json"))
 
 (define web-bundle

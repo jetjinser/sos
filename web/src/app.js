@@ -1,9 +1,11 @@
 import { LitElement, html, css, nothing } from "lit";
 import { init, runModel, formatSource } from "./wasm.js";
+import { detectFeatures, missingFeatures } from "./lib/wasm-features.js";
 import "./components/code-input.js";
 import "./components/store-panel.js";
 import "./components/step-controls.js";
 import "./components/source-view.js";
+import "./components/feature-bar.js";
 
 const EXAMPLES = {
   core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
@@ -26,6 +28,7 @@ export class SsvApp extends LitElement {
     _runError: { state: true },
     _src: { state: true },
     _model: { state: true },
+    _features: { state: true },
   };
 
   static styles = css`
@@ -106,21 +109,34 @@ export class SsvApp extends LitElement {
     this._debounce = null;
     this._src = "";
     this._model = "core";
+    this._features = [];
   }
 
   async connectedCallback() {
     super.connectedCallback();
+    this._features = detectFeatures();
     try {
       await init();
       this._loading = false;
       this._loadExample(this._model);
     } catch (e) {
       this._loading = false;
-      this._loadError = e instanceof WebAssembly.CompileError
-        ? "Wasm GC + tail call required (Firefox / Chrome latest)"
-        : String(e);
+      this._loadError = this._diagnoseLoadError(e);
     }
     this.addEventListener("keydown", this._onKey);
+  }
+
+  // Distinguish "the browser lacks a required feature" from "the build is
+  // broken" so the error points at the real cause instead of a generic one.
+  _diagnoseLoadError(e) {
+    const missing = missingFeatures(this._features);
+    if (missing.length) {
+      return `This browser is missing required WebAssembly features: ${missing.join(", ")}. Use the latest Firefox or Chrome.`;
+    }
+    if (e instanceof WebAssembly.CompileError) {
+      return "Failed to compile the app module — the build may be corrupt. Re-run `blue build` (and `blue release` if serving the release).";
+    }
+    return String(e);
   }
 
   disconnectedCallback() {
@@ -154,6 +170,7 @@ export class SsvApp extends LitElement {
           @step-to=${this._onStepTo}
           @play-toggle=${this._onPlayToggle}
           @speed-change=${this._onSpeed}></ssv-step-controls>
+        <ssv-feature-bar .features=${this._features}></ssv-feature-bar>
       </div>
 
       <div class="main">
