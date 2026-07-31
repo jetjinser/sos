@@ -11,8 +11,10 @@
   #:export (stx-span-alist
             step-snapshots
             resolve-alist
+            step-stores
             trace-snapshots
-            trace-resolve))
+            trace-resolve
+            trace-stores))
 
 ;;; ----------------------------------------
 ;;; Flatten a stx tree to (span . ctx) entries
@@ -90,6 +92,64 @@
           (loop (cdr records) state (cons state out))))))
 
 ;;; ----------------------------------------
+;;; Per-step store states
+
+;;; The counter value encoded in a fresh name like z:3.
+(define (name-counter name)
+  (let loop ((cs (reverse (string->list (symbol->string name))))
+             (digits '()))
+    (cond
+     [(null? cs) 0]
+     [(char=? (car cs) #\:)
+      (if (null? digits) 0 (string->number (list->string digits)))]
+     [else (loop (cdr cs) (cons (car cs) digits))])))
+
+(define (add-bind binds sym scopes name)
+  (let ((existing (assq sym binds)))
+    (if existing
+        (map (lambda (b)
+               (if (eq? (car b) sym)
+                   (cons sym (cons (cons scopes name) (cdr b)))
+                   b))
+             binds)
+        (cons (list sym (cons scopes name)) binds))))
+
+;;; Rule records carry the authoritative store; store-mutating ops (bind,
+;;; alloc-name, alloc-scope) are applied incrementally on top of it.
+(define (apply-record-store rec store)
+  (case (car rec)
+    [(rule) (list-ref rec 4)]
+    [(op)
+     (let ((kind (cadr rec))
+           (data (cddr rec)))
+       (cond
+        [(memq kind '(alloc-name alloc-scope))
+         (make-store (max (store-counter store)
+                          (+ (name-counter (car data)) 1))
+                     (store-binds store)
+                     (store-boxes store)
+                     (store-def-envs store))]
+        [(eq? kind 'bind)
+         (make-store (store-counter store)
+                     (add-bind (store-binds store)
+                               (list-ref data 0)
+                               (list-ref data 1)
+                               (list-ref data 2))
+                     (store-boxes store)
+                     (store-def-envs store))]
+        [else store]))]
+    [else store]))
+
+(define (step-stores records)
+  (let loop ((records records)
+             (store   (init-store))
+             (out     '()))
+    (if (null? records)
+        (reverse out)
+        (let ((store (apply-record-store (car records) store)))
+          (loop (cdr records) store (cons store out))))))
+
+;;; ----------------------------------------
 ;;; Resolve names for source identifiers (final state)
 
 ;;; A source identifier warrants a chip only when it actually resolves to a
@@ -127,3 +187,6 @@
   (resolve-alist (cdr (assq 'final-stx trace))
                  (cdr (assq 'final-store trace))
                  resolve-proc))
+
+(define (trace-stores trace)
+  (step-stores (cdr (assq 'steps trace))))

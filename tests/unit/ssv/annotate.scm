@@ -11,9 +11,11 @@
   #:use-module (ice-9 receive)
   #:use-module (core-model)
   #:use-module (phases-model)
+  #:use-module (defs-model)
   #:use-module (ssv source)
   #:use-module (ssv trace)
-  #:use-module (ssv annotate))
+  #:use-module (ssv annotate)
+  #:use-module (tests unit model harness))
 
 (test-begin "ssv-annotate")
 
@@ -109,9 +111,39 @@
 ;;; resolve-proc injection: phases model resolves through phase 0.
 (test-assert "resolve-phases-injection"
   (let* ((tr (run-traced 'phases (string->stx "(lambda z z)")))
-         (names (map cdr (trace-resolve tr
-                                        (lambda (id store)
-                                          (ph-resolve 0 id store))))))
+          (names (map cdr (trace-resolve tr
+                                          (lambda (id store)
+                                            (ph-resolve 0 id store))))))
     (submultiset? names (ast-vars (cdr (assq 'final-ast tr))))))
+
+;;; ----------------------------------------
+;;; step-stores: replayed store agrees with every rule's authoritative store
+
+(define (store=? a b)
+  (and (= (store-counter a) (store-counter b))
+       (equal? (store-binds a) (store-binds b))
+       (equal? (store-boxes a) (store-boxes b))
+       (equal? (store-def-envs a) (store-def-envs b))))
+
+(define (rule-stores-agree model input)
+  (let ((steps (cdr (assq 'steps (run-traced model input)))))
+    (let ((stores (step-stores steps)))
+      (and (= (length stores) (length steps))
+           (every (lambda (rec st)
+                    (if (eq? (car rec) 'rule)
+                        (store=? st (list-ref rec 4))
+                        #t))
+                  steps stores)))))
+
+(test-assert "stores-agree-core"
+  (rule-stores-agree 'core input-hyg))
+
+(test-assert "stores-agree-defs"
+  (rule-stores-agree 'defs input-defs-shadow))
+
+(test-assert "stores-final-agrees"
+  (let ((tr (run-traced 'core input-hyg)))
+    (store=? (last (step-stores (cdr (assq 'steps tr))))
+             (cdr (assq 'final-store tr)))))
 
 (test-end "ssv-annotate")

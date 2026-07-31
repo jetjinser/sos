@@ -21,6 +21,7 @@ export class SsvStorePanel extends LitElement {
       color: #fff; white-space: nowrap; display: inline-block; margin: 1px;
     }
     .counter { color: #888; }
+    .bname { font-weight: 700; }
     .empty { color: #aaa; font-style: italic; }
     .val { max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
   `;
@@ -61,7 +62,7 @@ export class SsvStorePanel extends LitElement {
               <tr>
                 <td>${i === 0 ? sym : ""}</td>
                 <td>${this._scope(scopes)}</td>
-                <td>${name}</td>
+                <td><span class="bname" style="color:${scopeColor(name)}">${name}</span></td>
               </tr>`,
           ),
         )}

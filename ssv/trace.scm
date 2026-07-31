@@ -30,7 +30,8 @@
           (cons 'final-ast ast)
           (cons 'final-store store)
           (cons 'snapshots (step-snapshots stx steps))
-          (cons 'resolve (resolve-alist expanded store resolve-proc)))))
+          (cons 'resolve (resolve-alist expanded store resolve-proc))
+          (cons 'stores (step-stores steps)))))
 
 (define (run-traced model stx)
   (reset-trace!)
@@ -90,6 +91,7 @@
           (cons "steps"       (json-array (map record->json (cdr (assq 'steps tr)))))
           (cons "snapshots"   (snapshots->json (cdr (assq 'snapshots tr))))
           (cons "resolve"     (resolve->json (cdr (assq 'resolve tr))))
+          (cons "stores"      (json-array (map store->json (cdr (assq 'stores tr)))))
           (cons "final-stx"   (value->json (cdr (assq 'final-stx tr))))
           (cons "final-ast"   (value->json (cdr (assq 'final-ast tr))))
           (cons "final-store" (value->json (cdr (assq 'final-store tr)))))))

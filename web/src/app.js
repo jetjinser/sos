@@ -163,11 +163,7 @@ export class SsvApp extends LitElement {
   }
 
   get _currentStore() {
-    const steps = this._trace?.steps ?? [];
-    for (let i = Math.min(this._index, steps.length - 1); i >= 0; i--) {
-      if (steps[i].store) return steps[i].store;
-    }
-    return this._trace?.["final-store"] ?? null;
+    return this._trace?.stores?.[this._index] ?? null;
   }
 
   render() {
