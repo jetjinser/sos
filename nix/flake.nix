@@ -43,6 +43,8 @@
                 nodejs
                 self'.packages.blue
                 esbuild
+                binaryen
+                wabt
               ];
               env =
                 let

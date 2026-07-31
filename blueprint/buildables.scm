@@ -47,6 +47,7 @@
     "ssv/source.scm"
     "ssv/emit.scm"
     "ssv/annotate.scm"
+    "ssv/format.scm"
     "model/core-model.scm"
     "model/phases-model.scm"
     "model/local-model.scm"

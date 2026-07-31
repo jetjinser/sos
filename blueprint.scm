@@ -7,6 +7,7 @@
   (blueprint install)
   (blueprint check-wasm)
   (blueprint serve)
+  (blueprint release)
   (blueprint buildables)
   (blueprint tests))
 
@@ -28,4 +29,4 @@
   (buildables (append ssv-modules (list model-wasm-tests app-wasm web-bundle) web-static))
   (testables ssv-tests)
   (commands
-    (list install-command check-wasm-command serve-command)))
+    (list install-command check-wasm-command serve-command release-command)))
