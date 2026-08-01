@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { scopeColor, scopeBg } from "../lib/scope-colors.js";
+import { ctxScopes } from "../lib/sexpr.js";
 import "./ast-view.js";
 
 const RULE_HUES = {
@@ -89,6 +90,11 @@ export class SsvStepDetail extends LitElement {
       letter-spacing: 0.1em; text-transform: uppercase;
       color: hsl(220 12% 58%);
       margin-bottom: 0.25rem;
+    }
+    .cap .hint {
+      font-style: normal; font-weight: 600;
+      letter-spacing: 0.04em; text-transform: none;
+      color: hsl(38 45% 52%);
     }
     .pane {
       padding: 0.35rem 0.45rem;
@@ -202,10 +208,31 @@ export class SsvStepDetail extends LitElement {
     return nothing;
   }
 
+  // Source syntax starts with empty scope sets; scopes are only painted on
+  // by ops during expansion.  Flag a before that is all stx with empty ctx
+  // so the empty hovers read as "pristine source", not as missing data.
+  _isPristine(v) {
+    const acc = { stx: false, scope: false };
+    const walk = (x) => {
+      if (!x || typeof x !== "object") return;
+      if ("form" in x && "ctx" in x) {
+        acc.stx = true;
+        if (ctxScopes(x.ctx).length) acc.scope = true;
+        if (Array.isArray(x.form)) x.form.forEach(walk);
+      } else if (Array.isArray(x)) {
+        x.forEach(walk);
+      }
+    };
+    walk(v);
+    return acc.stx && !acc.scope;
+  }
+
   _rewrite(before, after) {
     return html`
       <div class="pane before">
-        <span class="cap">before</span>
+        <span class="cap">before${this._isPristine(before)
+          ? html` <i class="hint">unmarked source · ∅ ctx</i>`
+          : nothing}</span>
         <ssv-ast-view .ast=${before}></ssv-ast-view>
       </div>
       <div class="arrow">↓</div>
