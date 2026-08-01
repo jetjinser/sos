@@ -95,11 +95,6 @@ export class SsvSourceView extends LitElement {
       animation: fresh-in 550ms ease-out;
     }
     @keyframes fresh-in { from { opacity: 0.15; } to { opacity: 1; } }
-    /* Focus deepens the tint: adjacent segments share the background so the
-       lit region reads as one continuous area (no per-character outlines) */
-    .seg.focus {
-      background: color-mix(in oklab, var(--scp-bg) 72%, var(--scp));
-    }
 
     /* ---- floating badges (out of flow so the textarea stays aligned) ---- */
     .chip, .dtag {
@@ -136,6 +131,8 @@ export class SsvSourceView extends LitElement {
       white-space: nowrap;
       pointer-events: none;
     }
+    /* Interactive in read-only mode; while editing the textarea sits on top
+       and chip hover is hit-tested geometrically instead */
     .shint {
       display: inline-flex; align-items: center;
       font-size: 0.6rem; line-height: 1.35; font-weight: 600;
@@ -144,10 +141,12 @@ export class SsvSourceView extends LitElement {
       color: var(--scp);
       background: var(--scp-bg);
       border: 1px solid color-mix(in oklab, var(--scp) 35%, var(--scp-bg));
+      pointer-events: auto; cursor: pointer;
       transition: opacity 180ms ease, background-color 180ms ease,
-                  color 180ms ease, box-shadow 180ms ease;
+                  color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
       animation: shint-in 220ms ease-out;
     }
+    .shint:hover { transform: translateY(-1px); }
     .shint.dim { opacity: 0.18; }
     .shint.on {
       color: #fff;
@@ -171,7 +170,7 @@ export class SsvSourceView extends LitElement {
     this.prevSnapshot = null;
     this.resolve = null;
     this.editable = false;
-    this._segBoxes = null;
+    this._chipBoxes = null;
     this._focusScope = null;
     this._focusTimer = null;
   }
@@ -186,7 +185,7 @@ export class SsvSourceView extends LitElement {
     // after clearing everything; only the read-only view shows a placeholder.
     if (!this.src && !this.editable) return html`<span class="empty">—</span>`;
 
-    this._segBoxes = null;
+    this._chipBoxes = null;
     const tokens = tokenizeSource(this.src);
     const spans = this.snapshot ?? [];
     const prevSpans = this.prevSnapshot ?? [];
@@ -288,17 +287,15 @@ export class SsvSourceView extends LitElement {
     this._applyFocus(scope);
   }
 
+  // Focus lives on the chips now: the focused scope's chips flip to solid
+  // and the legend chip lights up, while every other chip recedes.  The
+  // code keeps only its ambient tint — no per-hover deepening.
   _applyFocus(scope) {
     if (this._focusScope === scope) return;
     this._focusScope = scope;
     const root = this.renderRoot;
-    for (const el of root.querySelectorAll(".seg.tinted")) {
-      const scs = (el.dataset.scopes || "").split(" ").filter(Boolean);
-      el.classList.toggle("focus", scope != null && scs.includes(scope));
-    }
     for (const el of root.querySelectorAll(".lgd"))
       el.classList.toggle("on", scope != null && el.dataset.scope === scope);
-    // Chips of the focused scope flip to solid; all others recede
     for (const el of root.querySelectorAll(".shint")) {
       const has = scope != null && el.dataset.scope === scope;
       el.classList.toggle("on", has);
@@ -306,40 +303,39 @@ export class SsvSourceView extends LitElement {
     }
   }
 
-  // ---- code -> legend direction ------------------------------------------
+  // ---- chip -> legend direction ------------------------------------------
 
-  _segEnter(e) {
-    const scs = (e.currentTarget.dataset.scopes || "").split(" ").filter(Boolean);
-    if (scs.length) this._setFocus(scs[0]);
+  // Direct chip hover (read-only mode, where the highlight layer receives
+  // pointer events).
+  _chipEnter(e) {
+    const scope = e.currentTarget.dataset.scope;
+    if (scope) this._setFocus(scope);
   }
 
-  _segLeave() { this._setFocus(null); }
+  _chipLeave() { this._setFocus(null); }
 
-  // The highlight layer is pointer-transparent while editing, and the caret
-  // hit-testing APIs are unreliable on textareas, so hit-test geometrically:
-  // segment boxes are cached in .code content coordinates (scroll-invariant)
-  // and the cursor point is mapped into the same space.
+  // While editing, the textarea sits on top of the pointer-transparent
+  // highlight layer, so chip hover is hit-tested geometrically: chip boxes
+  // are cached in .code content coordinates (scroll-invariant) and the
+  // cursor point is mapped into the same space.  Only chips trigger focus —
+  // the code itself stays inert.
   _hoverMove(e) {
-    const seg = this._segAt(e.clientX, e.clientY);
-    if (!seg) {
-      this._setFocus(null);
-      return;
-    }
-    const scs = (seg.dataset.scopes || "").split(" ").filter(Boolean);
-    this._setFocus(scs.length ? scs[0] : null);
+    const scope = this._chipAt(e.clientX, e.clientY);
+    e.currentTarget.style.cursor = scope ? "pointer" : "";
+    this._setFocus(scope);
   }
 
   _hoverLeave() { this._setFocus(null); }
 
-  _segAt(x, y) {
+  _chipAt(x, y) {
     const code = this.renderRoot.querySelector(".code");
     if (!code) return null;
     const base = code.getBoundingClientRect();
-    if (!this._segBoxes) {
-      this._segBoxes = [...this.renderRoot.querySelectorAll(".seg")].map((el) => {
+    if (!this._chipBoxes) {
+      this._chipBoxes = [...this.renderRoot.querySelectorAll(".shint")].map((el) => {
         const r = el.getBoundingClientRect();
         return {
-          el,
+          scope: el.dataset.scope,
           left: r.left - base.left, top: r.top - base.top,
           right: r.right - base.left, bottom: r.bottom - base.top,
         };
@@ -347,9 +343,9 @@ export class SsvSourceView extends LitElement {
     }
     const px = x - base.left;
     const py = y - base.top;
-    for (const b of this._segBoxes) {
+    for (const b of this._chipBoxes) {
       if (px >= b.left && px < b.right && py >= b.top && py < b.bottom)
-        return b.el;
+        return b.scope;
     }
     return null;
   }
@@ -509,6 +505,8 @@ export class SsvSourceView extends LitElement {
             (s) => html`<span class="shint" data-scope=${s}
                               title="scope: ${s}"
                               style="--scp:${scopeColor(s)};--scp-bg:${scopeBg(s)}"
+                              @mouseenter=${this._chipEnter}
+                              @mouseleave=${this._chipLeave}
                         >${s}</span>`,
           )}
         </span>`
@@ -516,8 +514,6 @@ export class SsvSourceView extends LitElement {
 
     return html`<span class=${cls} style=${style.join(";")} title=${title}
                       data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}
-                      @mouseenter=${this._segEnter}
-                      @mouseleave=${this._segLeave}
       >${text}${startTags}${endChips}${hint}</span>`;
   }
 }
