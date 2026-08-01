@@ -95,10 +95,29 @@ export class SsvSourceView extends LitElement {
       animation: fresh-in 550ms ease-out;
     }
     @keyframes fresh-in { from { opacity: 0.15; } to { opacity: 1; } }
+    /* Deepen the tint instead of outlining: adjacent segments share the
+       same background so the lit region reads as one continuous area */
     .seg.focus {
-      outline: 2px solid var(--scp);
-      outline-offset: -1px;
-      z-index: 2;
+      background: color-mix(in oklab, var(--scp-bg) 72%, var(--scp));
+    }
+
+    /* Merged focus outlines: one rounded rect per line fragment, drawn
+       behind the text (see _drawFocusRects).  The fill matches .seg.focus
+       exactly so the block reads as one solid lit area, no white seam */
+    .code { position: relative; }
+    .focus-layer { position: absolute; inset: 0; pointer-events: none; }
+    .focus-rect {
+      position: absolute;
+      border-radius: 4px;
+      border: 1.5px solid var(--scp);
+      background: color-mix(in oklab, var(--scp-bg) 72%, var(--scp));
+      box-shadow: 0 0 0 3px color-mix(in oklab, var(--scp) 14%, transparent),
+                  0 2px 10px color-mix(in oklab, var(--scp) 28%, transparent);
+      animation: focus-in 180ms ease-out;
+    }
+    @keyframes focus-in {
+      from { opacity: 0; transform: scale(0.985); }
+      to   { opacity: 1; transform: none; }
     }
 
     /* ---- floating badges (out of flow so the textarea stays aligned) ---- */
@@ -164,7 +183,7 @@ export class SsvSourceView extends LitElement {
         ),
       );
     }
-    const code = html`<div class="code">${segs}</div>`;
+    const code = html`<div class="code"><div class="focus-layer"></div>${segs}</div>`;
     const legend = this._legend(spans);
 
     if (!this.editable) return html`${legend}${code}`;
@@ -236,6 +255,55 @@ export class SsvSourceView extends LitElement {
     }
     for (const el of root.querySelectorAll(".lgd"))
       el.classList.toggle("on", scope != null && el.dataset.scope === scope);
+    this._drawFocusRects(scope);
+  }
+
+  // Contiguous focus segments merge into a single rounded outline per line
+  // fragment, so a scope region reads as one area rather than a box around
+  // every character.  Rects live inside .code so they scroll with the text.
+  _drawFocusRects(scope) {
+    const root = this.renderRoot;
+    const layer = root.querySelector(".focus-layer");
+    const code = root.querySelector(".code");
+    if (!layer || !code) return;
+    layer.replaceChildren();
+    if (scope == null) return;
+
+    const base = code.getBoundingClientRect();
+    // Hug the tinted segments exactly; only the soft glow may extend outward
+    const pad = 0;
+    let cur = null;
+    let prevEl = null;
+    const flush = () => {
+      if (!cur) return;
+      const div = document.createElement("div");
+      div.className = "focus-rect";
+      div.style.left = `${cur.left - pad}px`;
+      div.style.top = `${cur.top - pad}px`;
+      div.style.width = `${cur.right - cur.left + pad * 2}px`;
+      div.style.height = `${cur.bottom - cur.top + pad * 2}px`;
+      div.style.setProperty("--scp", scopeColor(scope));
+      div.style.setProperty("--scp-bg", `hsl(${scopeHue(scope)} 70% 88%)`);
+      layer.appendChild(div);
+      cur = null;
+    };
+    for (const el of root.querySelectorAll(".seg.focus")) {
+      const r = el.getBoundingClientRect();
+      const top = r.top - base.top;
+      const left = r.left - base.left;
+      const sameLine = cur && Math.abs(top - cur.top) < 3;
+      const adjacent = prevEl && prevEl.nextElementSibling === el;
+      if (cur && sameLine && adjacent) {
+        cur.top = Math.min(cur.top, top);
+        cur.bottom = Math.max(cur.bottom, top + r.height);
+        cur.right = left + r.width;
+      } else {
+        flush();
+        cur = { top, bottom: top + r.height, left, right: left + r.width };
+      }
+      prevEl = el;
+    }
+    flush();
   }
 
   // ---- resolve chips (final binding) -----------------------------------
