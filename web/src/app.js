@@ -53,9 +53,11 @@ export class SsvApp extends LitElement {
       display: flex; align-items: center;
       gap: clamp(0.8rem, 1.6vw, 1.2rem);
     }
+    /* Inspector rail left, code right: the step's rewrite sits adjacent to
+       the flush-left source it rewrites, and causality reads left to right */
     .main {
       display: grid;
-      grid-template-columns: 1fr minmax(16em, 19em);
+      grid-template-columns: minmax(16em, 19em) 1fr;
       gap: clamp(0.9rem, 1.6vw, 1.4rem);
       min-height: 0; overflow: hidden;
     }
@@ -194,17 +196,6 @@ export class SsvApp extends LitElement {
       </div>
 
       <div class="main">
-        <div class="editor-panel">
-          ${this._runError
-            ? html`<div class="run-error">${this._runError}</div>`
-            : nothing}
-          <ssv-source-view editable
-            .src=${this._src}
-            .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
-            .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
-            .resolve=${this._trace?.resolve ?? null}
-            @code-input=${this._onCodeInput}></ssv-source-view>
-        </div>
         <div class="side">
           <div class="panel-label">step</div>
           <ssv-step-detail .step=${this._step}
@@ -215,6 +206,17 @@ export class SsvApp extends LitElement {
             : nothing}
           <div class="panel-label">result</div>
           <ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>
+        </div>
+        <div class="editor-panel">
+          ${this._runError
+            ? html`<div class="run-error">${this._runError}</div>`
+            : nothing}
+          <ssv-source-view editable
+            .src=${this._src}
+            .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
+            .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
+            .resolve=${this._trace?.resolve ?? null}
+            @code-input=${this._onCodeInput}></ssv-source-view>
         </div>
       </div>
     `;
