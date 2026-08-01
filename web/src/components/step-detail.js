@@ -32,12 +32,13 @@ export class SsvStepDetail extends LitElement {
   static styles = css`
     :host { display: block; font-family: inherit; font-size: 0.82rem; }
 
-    /* ---- head: badge + info chips ---- */
+    /* ---- head: badge, with info chips always on their own row below ---- */
     .head {
-      display: flex; align-items: center; gap: 0.5rem;
-      flex-wrap: wrap;
+      display: flex; flex-direction: column; align-items: flex-start;
+      gap: 0.4rem;
       margin-bottom: 0.55rem;
     }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     /* Category anchored by --cat (rule cool / op warm); per-step kind hue
        injected as --h; all three colors derived via color-mix */
     .badge {
@@ -73,8 +74,7 @@ export class SsvStepDetail extends LitElement {
     }
     .kv:nth-child(2) { animation-delay: 30ms; }
     .kv:nth-child(3) { animation-delay: 60ms; }
-    .kv:nth-child(4) { animation-delay: 90ms; }
-    .kv:nth-child(n+5) { animation-delay: 120ms; }
+    .kv:nth-child(n+4) { animation-delay: 90ms; }
     .kv .k {
       font-size: 0.58rem; font-weight: 700;
       letter-spacing: 0.08em; text-transform: uppercase;
@@ -163,7 +163,9 @@ export class SsvStepDetail extends LitElement {
     return keyed(this.index, html`
       <div class="head">
         ${this._badge(step)}
-        ${step.type === "rule" ? this._info(step) : nothing}
+        ${step.type === "rule" && Object.keys(step.info ?? {}).length
+          ? html`<div class="chips">${this._info(step)}</div>`
+          : nothing}
       </div>
       ${this._detail(step)}
     `);
