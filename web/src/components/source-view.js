@@ -1,5 +1,5 @@
 import { LitElement, html, css, nothing } from "lit";
-import { scopeColor, scopeHue } from "../lib/scope-colors.js";
+import { scopeColor, scopeHue, scopeBg } from "../lib/scope-colors.js";
 import { ctxScopes, tokenizeSource, atomKind } from "../lib/sexpr.js";
 
 // Foreground palette for token kinds.
@@ -64,7 +64,8 @@ export class SsvSourceView extends LitElement {
       line-height: 2.1;
       white-space: pre-wrap;
       overflow-wrap: break-word;
-      padding: 0.35rem 0.5rem;
+      /* generous top padding clears the floating chips above line 1 */
+      padding: 1.1rem 0.5rem 0.4rem;
       margin: 0;
       border: none;
       box-sizing: border-box;
@@ -86,7 +87,6 @@ export class SsvSourceView extends LitElement {
     .kw { font-weight: 700; }
     .seg.tinted {
       background: var(--scp-bg);
-      box-shadow: inset 0 -2px 0 var(--scp);
       transition: background-color 220ms ease, filter 160ms ease;
     }
     .seg.fresh {
@@ -95,29 +95,10 @@ export class SsvSourceView extends LitElement {
       animation: fresh-in 550ms ease-out;
     }
     @keyframes fresh-in { from { opacity: 0.15; } to { opacity: 1; } }
-    /* Deepen the tint instead of outlining: adjacent segments share the
-       same background so the lit region reads as one continuous area */
+    /* Focus deepens the tint: adjacent segments share the background so the
+       lit region reads as one continuous area (no per-character outlines) */
     .seg.focus {
       background: color-mix(in oklab, var(--scp-bg) 72%, var(--scp));
-    }
-
-    /* Merged focus outlines: one rounded rect per line fragment, drawn
-       behind the text (see _drawFocusRects).  The fill matches .seg.focus
-       exactly so the block reads as one solid lit area, no white seam */
-    .code { position: relative; }
-    .focus-layer { position: absolute; inset: 0; pointer-events: none; }
-    .focus-rect {
-      position: absolute;
-      border-radius: 4px;
-      border: 1.5px solid var(--scp);
-      background: color-mix(in oklab, var(--scp-bg) 72%, var(--scp));
-      box-shadow: 0 0 0 3px color-mix(in oklab, var(--scp) 14%, transparent),
-                  0 2px 10px color-mix(in oklab, var(--scp) 28%, transparent);
-      animation: focus-in 180ms ease-out;
-    }
-    @keyframes focus-in {
-      from { opacity: 0; transform: scale(0.985); }
-      to   { opacity: 1; transform: none; }
     }
 
     /* ---- floating badges (out of flow so the textarea stays aligned) ---- */
@@ -142,6 +123,39 @@ export class SsvSourceView extends LitElement {
       color: hsl(220 10% 55%); border: 1px solid hsl(220 12% 76%);
       background: hsl(0 0% 100% / 0.7); text-decoration: line-through;
     }
+
+    /* Scope-set virtual text at end of line (eol): one chip per scope in a
+       right-margin row, oldest first so fresh scopes grow in on the right.
+       Absolute + out of flow so the textarea stays aligned */
+    .shint-row {
+      position: absolute;
+      left: 100%; margin-left: 9px;
+      top: 50%; transform: translateY(-50%);
+      z-index: 3;
+      display: inline-flex; align-items: center; gap: 3px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .shint {
+      display: inline-flex; align-items: center;
+      font-size: 0.6rem; line-height: 1.35; font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 7px;
+      color: var(--scp);
+      background: var(--scp-bg);
+      border: 1px solid color-mix(in oklab, var(--scp) 35%, var(--scp-bg));
+      transition: opacity 180ms ease, background-color 180ms ease,
+                  color 180ms ease, box-shadow 180ms ease;
+      animation: shint-in 220ms ease-out;
+    }
+    .shint.dim { opacity: 0.18; }
+    .shint.on {
+      color: #fff;
+      background: var(--scp);
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--scp) 25%, transparent),
+                  0 2px 8px color-mix(in oklab, var(--scp) 35%, transparent);
+    }
+    @keyframes shint-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes pop-in {
       0% { opacity: 0; transform: scale(0.5); }
       100% { opacity: 1; transform: scale(1); }
@@ -180,19 +194,22 @@ export class SsvSourceView extends LitElement {
     const tags = this._deltaTags(spans, prevSpans);
 
     const points = this._boundaries(tokens, spans, prevSpans, chips, tags);
+    const lineEnds = this._lineEndChips(tokens, spans);
     const segs = [];
     for (let k = 0; k < points.length - 1; k++) {
       const a = points[k];
       const b = points[k + 1];
       if (a >= b) continue;
+      const scopes = this._ctxAt(spans, a, b);
       segs.push(
         this._segment(
           this.src.slice(a, b), tokens, spans, prevSpans, a, b,
-          tags.get(a) ?? [], chips.get(b) ?? [],
+          tags.get(a) ?? [], chips.get(b) ?? [], scopes,
+          lineEnds.get(b) ?? null,
         ),
       );
     }
-    const code = html`<div class="code"><div class="focus-layer"></div>${segs}</div>`;
+    const code = html`<div class="code">${segs}</div>`;
     const legend = this._legend(spans);
 
     if (!this.editable) return html`${legend}${code}`;
@@ -281,7 +298,12 @@ export class SsvSourceView extends LitElement {
     }
     for (const el of root.querySelectorAll(".lgd"))
       el.classList.toggle("on", scope != null && el.dataset.scope === scope);
-    this._drawFocusRects(scope);
+    // Chips of the focused scope flip to solid; all others recede
+    for (const el of root.querySelectorAll(".shint")) {
+      const has = scope != null && el.dataset.scope === scope;
+      el.classList.toggle("on", has);
+      el.classList.toggle("dim", scope != null && !has);
+    }
   }
 
   // ---- code -> legend direction ------------------------------------------
@@ -330,54 +352,6 @@ export class SsvSourceView extends LitElement {
         return b.el;
     }
     return null;
-  }
-
-  // Contiguous focus segments merge into a single rounded outline per line
-  // fragment, so a scope region reads as one area rather than a box around
-  // every character.  Rects live inside .code so they scroll with the text.
-  _drawFocusRects(scope) {
-    const root = this.renderRoot;
-    const layer = root.querySelector(".focus-layer");
-    const code = root.querySelector(".code");
-    if (!layer || !code) return;
-    layer.replaceChildren();
-    if (scope == null) return;
-
-    const base = code.getBoundingClientRect();
-    // Hug the tinted segments exactly; only the soft glow may extend outward
-    const pad = 0;
-    let cur = null;
-    let prevEl = null;
-    const flush = () => {
-      if (!cur) return;
-      const div = document.createElement("div");
-      div.className = "focus-rect";
-      div.style.left = `${cur.left - pad}px`;
-      div.style.top = `${cur.top - pad}px`;
-      div.style.width = `${cur.right - cur.left + pad * 2}px`;
-      div.style.height = `${cur.bottom - cur.top + pad * 2}px`;
-      div.style.setProperty("--scp", scopeColor(scope));
-      div.style.setProperty("--scp-bg", `hsl(${scopeHue(scope)} 70% 88%)`);
-      layer.appendChild(div);
-      cur = null;
-    };
-    for (const el of root.querySelectorAll(".seg.focus")) {
-      const r = el.getBoundingClientRect();
-      const top = r.top - base.top;
-      const left = r.left - base.left;
-      const sameLine = cur && Math.abs(top - cur.top) < 3;
-      const adjacent = prevEl && prevEl.nextElementSibling === el;
-      if (cur && sameLine && adjacent) {
-        cur.top = Math.min(cur.top, top);
-        cur.bottom = Math.max(cur.bottom, top + r.height);
-        cur.right = left + r.width;
-      } else {
-        flush();
-        cur = { top, bottom: top + r.height, left, right: left + r.width };
-      }
-      prevEl = el;
-    }
-    flush();
   }
 
   // ---- resolve chips (final binding) -----------------------------------
@@ -468,15 +442,44 @@ export class SsvSourceView extends LitElement {
     return best ? ctxScopes(best) : [];
   }
 
+  // End-of-line "virtual text": the only place inline annotations can sit
+  // without reflowing the textarea-aligned highlight (cf. Neovim's
+  // virt_text_pos=eol, git-blame style).  A line's trailing characters are
+  // often wrapper parens with empty ctx, so walk back from the last content
+  // character to the nearest position carrying a scope set — that is the set
+  // in effect at end of line.
+  _lineEndChips(tokens, spans) {
+    const map = new Map();
+    const src = this.src;
+    const isWs = (c) => c === " " || c === "\t" || c === "\n" || c === "\r";
+    let lineStart = 0;
+    for (let i = 0; i <= src.length; i++) {
+      if (i !== src.length && src[i] !== "\n") continue;
+      let last = i - 1;
+      while (last >= lineStart && isWs(src[last])) last--;
+      if (last >= lineStart) {
+        let p = last;
+        let scopes = [];
+        while (p >= lineStart && !scopes.length) {
+          scopes = this._ctxAt(spans, p, p + 1);
+          p--;
+        }
+        if (scopes.length) map.set(last + 1, scopes);
+      }
+      lineStart = i + 1;
+    }
+    return map;
+  }
+
   _tokenAt(tokens, pos) {
     for (const t of tokens) if (t.start <= pos && pos < t.end) return t;
     return null;
   }
 
-  _segment(text, tokens, spans, prevSpans, a, b, startTags, endChips) {
+  _segment(text, tokens, spans, prevSpans, a, b, startTags, endChips,
+           scopesNow, setChip) {
     const tok = this._tokenAt(tokens, a);
     const kind = tok ? (tok.kind === "atom" ? atomKind(tok.text) : tok.kind) : "ws";
-    const scopesNow = this._ctxAt(spans, a, b);
     const scopesPrev = this._ctxAt(prevSpans, a, b);
 
     let cls = "seg";
@@ -500,11 +503,22 @@ export class SsvSourceView extends LitElement {
       if (delta) style.push(`--fresh-c:${scopeColor(delta)}`);
     }
 
+    const hint = setChip
+      ? html`<span class="shint-row">
+          ${[...setChip].reverse().map(
+            (s) => html`<span class="shint" data-scope=${s}
+                              title="scope: ${s}"
+                              style="--scp:${scopeColor(s)};--scp-bg:${scopeBg(s)}"
+                        >${s}</span>`,
+          )}
+        </span>`
+      : nothing;
+
     return html`<span class=${cls} style=${style.join(";")} title=${title}
                       data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}
                       @mouseenter=${this._segEnter}
                       @mouseleave=${this._segLeave}
-      >${text}${startTags}${endChips}</span>`;
+      >${text}${startTags}${endChips}${hint}</span>`;
   }
 }
 
