@@ -7,7 +7,10 @@ export class SsvCodeInput extends LitElement {
   };
 
   static styles = css`
-    :host { display: inline-flex; align-items: center; gap: 0.6rem; }
+    :host {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      flex-shrink: 0;
+    }
     label {
       display: inline-flex; align-items: center; gap: 0.4rem;
       font-size: 0.85rem; color: hsl(220 20% 35%);

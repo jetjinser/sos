@@ -9,7 +9,10 @@ export class SsvFeatureBar extends LitElement {
   };
 
   static styles = css`
-    :host { display: inline-flex; align-items: center; margin-left: auto; }
+    :host {
+      display: inline-flex; align-items: center;
+      margin-left: auto; flex-shrink: 0;
+    }
     .bar { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .label {
       font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase;

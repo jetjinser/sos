@@ -6,6 +6,7 @@ import "./components/store-panel.js";
 import "./components/step-controls.js";
 import "./components/source-view.js";
 import "./components/feature-bar.js";
+import "./components/step-status.js";
 
 const EXAMPLES = {
   core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
@@ -34,7 +35,7 @@ export class SsvApp extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto 1fr;
       height: 100vh; box-sizing: border-box;
       padding: clamp(1.2rem, 3vw, 3rem);
       gap: clamp(0.9rem, 1.6vw, 1.4rem);
@@ -45,10 +46,11 @@ export class SsvApp extends LitElement {
         radial-gradient(hsl(220 15% 88%) 1px, transparent 1px) 0 0 / 22px 22px,
         hsl(220 20% 98%);
     }
+    /* Controls only: the current-step badge and info live on their own row
+       below (ssv-step-status), so nothing here competes for width */
     .topbar {
       display: flex; align-items: center;
       gap: clamp(0.8rem, 1.6vw, 1.2rem);
-      flex-wrap: wrap;
     }
     .main {
       display: grid;
@@ -188,6 +190,8 @@ export class SsvApp extends LitElement {
           @speed-change=${this._onSpeed}></ssv-step-controls>
         <ssv-feature-bar .features=${this._features}></ssv-feature-bar>
       </div>
+
+      <ssv-step-status .step=${this._step} .index=${this._index}></ssv-step-status>
 
       <div class="main">
         <div class="editor-panel">
