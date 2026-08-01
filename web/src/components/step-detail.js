@@ -3,9 +3,26 @@ import { keyed } from "lit/directives/keyed.js";
 import { scopeColor, scopeBg } from "../lib/scope-colors.js";
 import "./ast-view.js";
 
-// Per-step inspector pane: rule steps show the before -> after rewrite,
-// op steps show their scope/binding payload.  Everything renders through
-// ssv-ast-view, which handles both stx objects and raw AST values.
+const RULE_HUES = {
+  lambda: 212, "let-syntax": 248,
+  "macro-invoke": 282,
+  app: 198, "fun-app": 198, "prim-app": 188,
+  id: 168,
+  quote: 222, syntax: 262, literal: 222, stops: 222, value: 222,
+  "LOCAL-VALUE": 158, "LOCAL-EXPAND": 302, "LOCAL-BINDER": 318,
+  "NEW-DEFS": 338, "DEF-BIND": 352,
+  BOX: 18, UNBOX: 32, "SET-BOX!": 4,
+};
+
+const OP_HUES = {
+  "stx-add": 145, "stx-flip": 25, "stx-prune": 335,
+  bind: 262, "alloc-name": 185, "alloc-scope": 85,
+};
+
+// Current-step inspector: the rule/op badge with its info entries, sitting
+// directly above the rewrite it describes (rule before -> after, or the op's
+// scope/binding payload).  One pane so step identity and step content are
+// never separated.
 export class SsvStepDetail extends LitElement {
   static properties = {
     step: { type: Object },
@@ -13,7 +30,59 @@ export class SsvStepDetail extends LitElement {
   };
 
   static styles = css`
-    :host { display: block; font-family: inherit; font-size: 0.78rem; }
+    :host { display: block; font-family: inherit; font-size: 0.82rem; }
+
+    /* ---- head: badge + info chips ---- */
+    .head {
+      display: flex; align-items: center; gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.55rem;
+    }
+    /* Category anchored by --cat (rule cool / op warm); per-step kind hue
+       injected as --h; all three colors derived via color-mix */
+    .badge {
+      --h: 222;
+      display: inline-flex; align-items: stretch;
+      border-radius: 3px; overflow: hidden;
+      font-weight: bold;
+      animation: badge-in 180ms ease-out;
+    }
+    .badge.rule { --cat: #246; }
+    .badge.op   { --cat: #642; }
+    .badge .kind {
+      display: inline-flex; align-items: center;
+      font-size: 0.62rem; font-weight: 700;
+      letter-spacing: 0.07em; text-transform: uppercase;
+      padding: 0 0.4rem;
+      color: #fff;
+      background: color-mix(in oklab, var(--cat) 80%, hsl(var(--h) 75% 42%));
+    }
+    .badge .name {
+      padding: 0.14rem 0.5rem;
+      background: color-mix(in oklab, hsl(var(--h) 90% 95%) 80%, var(--cat));
+      color: color-mix(in oklab, var(--cat) 42%, hsl(var(--h) 65% 28%));
+    }
+    .kv {
+      display: inline-flex; align-items: baseline; gap: 0.4em;
+      font-size: 0.72rem;
+      padding: 0.16rem 0.5rem;
+      border: 1px solid hsl(220 15% 88%);
+      border-radius: 3px;
+      background: hsl(220 25% 97% / 0.8);
+      animation: chip-in 200ms ease-out backwards;
+    }
+    .kv:nth-child(2) { animation-delay: 30ms; }
+    .kv:nth-child(3) { animation-delay: 60ms; }
+    .kv:nth-child(4) { animation-delay: 90ms; }
+    .kv:nth-child(n+5) { animation-delay: 120ms; }
+    .kv .k {
+      font-size: 0.58rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: hsl(220 12% 55%);
+    }
+    .kv .v { font-weight: 600; color: hsl(220 30% 30%); }
+
+    /* ---- rewrite panes ---- */
     .cap {
       display: block;
       font-size: 0.58rem; font-weight: 700;
@@ -29,26 +98,22 @@ export class SsvStepDetail extends LitElement {
       overflow-x: auto;
       animation: pane-in 240ms ease-out backwards;
     }
-    .pane.after { animation-delay: 90ms; }
+    .pane.before { animation-delay: 80ms; }
+    .pane.after  { animation-delay: 180ms; }
     .arrow {
       text-align: center;
       color: hsl(220 15% 62%);
       font-size: 0.9rem; line-height: 1.3;
       animation: arrow-in 240ms ease-out backwards;
-      animation-delay: 45ms;
+      animation-delay: 130ms;
     }
-    @keyframes pane-in {
-      from { opacity: 0; transform: translateY(4px); }
-      to   { opacity: 1; transform: none; }
-    }
-    @keyframes arrow-in {
-      from { opacity: 0; transform: translateY(-3px); }
-      to   { opacity: 1; transform: none; }
-    }
+
+    /* ---- op payload ---- */
     .row {
       display: flex; align-items: center; gap: 0.35rem;
       flex-wrap: wrap;
-      margin-bottom: 0.3rem;
+      animation: pane-in 240ms ease-out backwards;
+      animation-delay: 80ms;
     }
     .scp {
       display: inline-block;
@@ -61,11 +126,28 @@ export class SsvStepDetail extends LitElement {
       padding: 0.05rem 0.4rem; border-radius: 4px;
       animation: pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+    .opname { color: hsl(220 15% 45%); }
+
+    @keyframes badge-in {
+      from { opacity: 0.2; transform: translateX(-4px); }
+      to   { opacity: 1;    transform: none; }
+    }
+    @keyframes chip-in {
+      from { opacity: 0; transform: translateY(3px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes pane-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes arrow-in {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: none; }
+    }
     @keyframes pop {
       from { opacity: 0; transform: scale(0.6); }
       to   { opacity: 1; transform: scale(1); }
     }
-    .opname { color: hsl(220 15% 45%); }
     .empty { color: #99a; font-style: italic; }
   `;
 
@@ -78,7 +160,38 @@ export class SsvStepDetail extends LitElement {
   render() {
     const step = this.step;
     if (!step) return html`<span class="empty">—</span>`;
-    return keyed(this.index, this._detail(step));
+    return keyed(this.index, html`
+      <div class="head">
+        ${this._badge(step)}
+        ${step.type === "rule" ? this._info(step) : nothing}
+      </div>
+      ${this._detail(step)}
+    `);
+  }
+
+  _badge(step) {
+    if (step.type === "rule") {
+      return html`
+        <span class="badge rule"
+              style="--h: ${RULE_HUES[step.rule] ?? 222}">
+          <span class="kind">rule</span><span class="name">${step.rule}</span>
+        </span>`;
+    }
+    if (step.type === "op") {
+      return html`
+        <span class="badge op" style="--h: ${OP_HUES[step.op] ?? 222}">
+          <span class="kind">op</span><span class="name">${step.op}</span>
+        </span>`;
+    }
+    return nothing;
+  }
+
+  _info(step) {
+    return Object.entries(step.info ?? {}).map(([k, v]) => html`
+      <span class="kv">
+        <span class="k">${k}</span>
+        <span class="v">${typeof v === "object" ? JSON.stringify(v) : v}</span>
+      </span>`);
   }
 
   _detail(step) {
