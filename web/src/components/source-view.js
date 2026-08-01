@@ -157,6 +157,14 @@ export class SsvSourceView extends LitElement {
     this.prevSnapshot = null;
     this.resolve = null;
     this.editable = false;
+    this._segBoxes = null;
+    this._focusScope = null;
+    this._focusTimer = null;
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearTimeout(this._focusTimer);
   }
 
   render() {
@@ -164,6 +172,7 @@ export class SsvSourceView extends LitElement {
     // after clearing everything; only the read-only view shows a placeholder.
     if (!this.src && !this.editable) return html`<span class="empty">—</span>`;
 
+    this._segBoxes = null;
     const tokens = tokenizeSource(this.src);
     const spans = this.snapshot ?? [];
     const prevSpans = this.prevSnapshot ?? [];
@@ -193,7 +202,9 @@ export class SsvSourceView extends LitElement {
         <div class="highlight">${code}</div>
         <textarea class="input" spellcheck="false" wrap="soft"
                   @input=${this._onInput}
-                  @scroll=${this._onScroll}></textarea>
+                  @scroll=${this._onScroll}
+                  @mousemove=${this._hoverMove}
+                  @mouseleave=${this._hoverLeave}></textarea>
       </div>`;
   }
 
@@ -247,7 +258,22 @@ export class SsvSourceView extends LitElement {
     </div>`;
   }
 
+  // Bidirectional focus: legend chips call this on hover, and so do code
+  // segments (directly in read-only mode, via caret hit-testing in editing
+  // mode).  Clearing is deferred so crossing segment boundaries — where the
+  // next mouseenter fires before the previous mouseleave — never flickers.
   _setFocus(scope) {
+    clearTimeout(this._focusTimer);
+    if (scope == null) {
+      this._focusTimer = setTimeout(() => this._applyFocus(null), 40);
+      return;
+    }
+    this._applyFocus(scope);
+  }
+
+  _applyFocus(scope) {
+    if (this._focusScope === scope) return;
+    this._focusScope = scope;
     const root = this.renderRoot;
     for (const el of root.querySelectorAll(".seg.tinted")) {
       const scs = (el.dataset.scopes || "").split(" ").filter(Boolean);
@@ -256,6 +282,54 @@ export class SsvSourceView extends LitElement {
     for (const el of root.querySelectorAll(".lgd"))
       el.classList.toggle("on", scope != null && el.dataset.scope === scope);
     this._drawFocusRects(scope);
+  }
+
+  // ---- code -> legend direction ------------------------------------------
+
+  _segEnter(e) {
+    const scs = (e.currentTarget.dataset.scopes || "").split(" ").filter(Boolean);
+    if (scs.length) this._setFocus(scs[0]);
+  }
+
+  _segLeave() { this._setFocus(null); }
+
+  // The highlight layer is pointer-transparent while editing, and the caret
+  // hit-testing APIs are unreliable on textareas, so hit-test geometrically:
+  // segment boxes are cached in .code content coordinates (scroll-invariant)
+  // and the cursor point is mapped into the same space.
+  _hoverMove(e) {
+    const seg = this._segAt(e.clientX, e.clientY);
+    if (!seg) {
+      this._setFocus(null);
+      return;
+    }
+    const scs = (seg.dataset.scopes || "").split(" ").filter(Boolean);
+    this._setFocus(scs.length ? scs[0] : null);
+  }
+
+  _hoverLeave() { this._setFocus(null); }
+
+  _segAt(x, y) {
+    const code = this.renderRoot.querySelector(".code");
+    if (!code) return null;
+    const base = code.getBoundingClientRect();
+    if (!this._segBoxes) {
+      this._segBoxes = [...this.renderRoot.querySelectorAll(".seg")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          el,
+          left: r.left - base.left, top: r.top - base.top,
+          right: r.right - base.left, bottom: r.bottom - base.top,
+        };
+      });
+    }
+    const px = x - base.left;
+    const py = y - base.top;
+    for (const b of this._segBoxes) {
+      if (px >= b.left && px < b.right && py >= b.top && py < b.bottom)
+        return b.el;
+    }
+    return null;
   }
 
   // Contiguous focus segments merge into a single rounded outline per line
@@ -428,6 +502,8 @@ export class SsvSourceView extends LitElement {
 
     return html`<span class=${cls} style=${style.join(";")} title=${title}
                       data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}
+                      @mouseenter=${this._segEnter}
+                      @mouseleave=${this._segLeave}
       >${text}${startTags}${endChips}</span>`;
   }
 }
