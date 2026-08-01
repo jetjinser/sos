@@ -7,6 +7,8 @@ import "./components/step-controls.js";
 import "./components/source-view.js";
 import "./components/feature-bar.js";
 import "./components/step-status.js";
+import "./components/step-detail.js";
+import "./components/ast-view.js";
 
 const EXAMPLES = {
   core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
@@ -83,6 +85,7 @@ export class SsvApp extends LitElement {
       text-transform: uppercase; color: hsl(220 12% 52%);
       margin-bottom: 0.75rem;
     }
+    .panel-label:not(:first-child) { margin-top: 1.15rem; }
     .error {
       grid-row: 1 / -1;
       place-self: center;
@@ -206,10 +209,15 @@ export class SsvApp extends LitElement {
             @code-input=${this._onCodeInput}></ssv-source-view>
         </div>
         <div class="side">
+          <div class="panel-label">step</div>
+          <ssv-step-detail .step=${this._step}
+                           .index=${this._index}></ssv-step-detail>
           <div class="panel-label">store</div>
           ${this._trace
             ? html`<ssv-store-panel .store=${this._currentStore}></ssv-store-panel>`
             : nothing}
+          <div class="panel-label">result</div>
+          <ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>
         </div>
       </div>
     `;
