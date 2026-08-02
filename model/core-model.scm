@@ -200,7 +200,8 @@
 ;;; Primitives (δ)
 
 (define (prim? x)
-  (memq x '(syntax->datum datum->syntax bound-identifier=?
+  (memq x '(syntax->datum datum->syntax
+            bound-identifier=? free-identifier=? generate-temporaries
             + - CONS CAR CDR LIST
             LOCAL-VALUE LOCAL-EXPAND LOCAL-BINDER
             BOX UNBOX SET-BOX! NEW-DEFS DEF-BIND)))
@@ -252,6 +253,13 @@
      (let*-values ([(val s1)    (eval-ast rand store)]
                    [(result s2) (eval-ast (subst body bvar val) s1)])
        (values result s2))]
+    [('app 'free-identifier=? a b)
+     (let*-values ([(va s1) (eval-ast a store)]
+                   [(vb s2) (eval-ast b s1)])
+       (values (eq? (resolve va s2) (resolve vb s2)) s2))]
+    [('app 'generate-temporaries lst)
+     (let*-values ([(v s1) (eval-ast lst store)])
+       (gen-temps v s1))]
     [('app (? prim? rator) . rands)
      (let*-values ([(vals s1) (eval-ast* '() rands store)])
        (values (delta rator vals) s1))]
@@ -270,6 +278,14 @@
       (values (reverse done) store)
       (let*-values ([(val s1) (eval-ast (car todo) store)])
         (eval-ast* (cons val done) (cdr todo) s1))))
+
+(define (gen-temps stxs store)
+  (if (null? stxs)
+      (values '() store)
+      (let*-values ([(scp s1)    (alloc-scope (car stxs) store)]
+                    [(freshened) (stx-add (car stxs) scp)]
+                    [(rest s2)   (gen-temps (cdr stxs) s1)])
+        (values (cons freshened rest) s2))))
 
 ;;; ----------------------------------------
 ;;; Parse

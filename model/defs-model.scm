@@ -301,6 +301,21 @@
       (emit-rule 'fun-app ast result (Sigma*-store s*3) env (list (cons 'phase ph)))
       (values result s*3)))
 
+   ;; free-identifier=?
+   ((and (pair? ast) (eq? (car ast) 'app)
+         (eq? (cadr ast) 'free-identifier=?))
+    (let*-values ([(va s*2) (defs-eval ph (caddr ast) maybe-scp env s*)]
+                  [(vb s*3) (defs-eval ph (cadddr ast) maybe-scp env s*2)]
+                  [(store3) (Sigma*-store s*3)])
+      (values (eq? (ph-resolve ph va store3) (ph-resolve ph vb store3)) s*3)))
+
+   ;; generate-temporaries
+   ((and (pair? ast) (eq? (car ast) 'app)
+         (eq? (cadr ast) 'generate-temporaries))
+    (let*-values ([(v s*2)     (defs-eval ph (caddr ast) maybe-scp env s*)]
+                  [(temps s*3) (ph-gen-temps ph v s*2)])
+      (values temps s*3)))
+
    ;; primitive application
    ((and (pair? ast) (eq? (car ast) 'app)
          (prim? (cadr ast)))

@@ -39,4 +39,25 @@
               (list (make-stx 'x '(s1) #f)
                     (make-stx 'x '(s2) #f)))))
 
+(test-assert "free-identifier=?-same-resolution"
+  (receive (result store)
+      (eval-ast `(app free-identifier=? ,(make-stx 'x '(s1) #f) ,(make-stx 'x '(s2) #f))
+                (init-store))
+    result))
+
+(test-assert "free-identifier=?-diff-resolution"
+  (receive (result store)
+      (eval-ast `(app free-identifier=? ,(make-stx 'x '() #f) ,(make-stx 'y '() #f))
+                (init-store))
+    (not result)))
+
+(test-assert "generate-temporaries-fresh-scopes"
+  (receive (result store)
+      (eval-ast `(app generate-temporaries
+                      (app LIST ,(make-stx 'x '() #f) ,(make-stx 'y '() #f)))
+                (init-store))
+    (and (= (length result) 2)
+         (= (store-counter store) 2)
+         (not (equal? (stx-ctx (car result)) (stx-ctx (cadr result)))))))
+
 (test-end "model-core")

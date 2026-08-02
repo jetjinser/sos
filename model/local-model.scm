@@ -12,7 +12,7 @@
   #:use-module (core-model)
   #:use-module (phases-model)
   #:use-module (ssv emit)
-  #:export (loc-eval loc-expand))
+  #:export (loc-eval loc-expand ph-gen-temps))
 
 ;;; ----------------------------------------
 ;;; Σ* triple: (store scps-p scps-u)
@@ -100,6 +100,21 @@
       (emit-rule 'fun-app ast result (Sigma*-store s*3) env (list (cons 'phase ph)))
       (values result s*3)))
 
+   ;; free-identifier=?
+   ((and (pair? ast) (eq? (car ast) 'app)
+         (eq? (cadr ast) 'free-identifier=?))
+    (let*-values ([(va s*2) (loc-eval ph (caddr ast) maybe-scp env s*)]
+                  [(vb s*3) (loc-eval ph (cadddr ast) maybe-scp env s*2)]
+                  [(store3) (Sigma*-store s*3)])
+      (values (eq? (ph-resolve ph va store3) (ph-resolve ph vb store3)) s*3)))
+
+   ;; generate-temporaries
+   ((and (pair? ast) (eq? (car ast) 'app)
+         (eq? (cadr ast) 'generate-temporaries))
+    (let*-values ([(v s*2)     (loc-eval ph (caddr ast) maybe-scp env s*)]
+                  [(temps s*3) (ph-gen-temps ph v s*2)])
+      (values temps s*3)))
+
    ;; primitive application
    ((and (pair? ast) (eq? (car ast) 'app)
          (prim? (cadr ast)))
@@ -118,6 +133,15 @@
       (values (reverse done) s*)
       (receive (val s*2) (loc-eval ph (car todo) maybe-scp env s*)
         (loc-eval* ph (cons val done) (cdr todo) maybe-scp env s*2))))
+
+(define (ph-gen-temps ph stxs s*)
+  (if (null? stxs)
+      (values '() s*)
+      (let*-values ([(scp s1)    (alloc-scope (car stxs) (Sigma*-store s*))]
+                    [(freshened) (ph-stx-add ph (car stxs) scp)]
+                    [(s*2)       (make-Sigma* s1 (Sigma*-scps-p s*) (Sigma*-scps-u s*))]
+                    [(rest s*3)  (ph-gen-temps ph (cdr stxs) s*2)])
+        (values (cons freshened rest) s*3))))
 
 ;;; ----------------------------------------
 ;;; Expand (with Σ*)
