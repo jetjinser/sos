@@ -258,6 +258,8 @@ export class SsvApp extends LitElement {
               .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
               .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
               .resolve=${this._trace?.resolve ?? null}
+              .binders=${this._trace?.binders ?? null}
+              .uses=${this._trace?.uses ?? null}
               @code-input=${this._onCodeInput}></ssv-source-view>
           </div>
           <div class="view ${this._view === "expansion" ? "show" : ""}">

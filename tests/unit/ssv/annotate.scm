@@ -117,6 +117,34 @@
     (submultiset? names (ast-vars (cdr (assq 'final-ast tr))))))
 
 ;;; ----------------------------------------
+;;; binder-alist / use-alist: binder<->use linkage
+
+(test-equal "binder-lambda-zz"
+  '(((8 . 9) . z:0))
+  (trace-binders lambda-zz-trace))
+
+;;; (lambda z (CONS z z)): both uses of z refer back to the binder at (8 . 9).
+(test-equal "uses-lambda-cons"
+  '(((16 . 17) . (8 . 9)) ((18 . 19) . (8 . 9)))
+  (trace-uses (run-traced 'core (string->stx "(lambda z (CONS z z))")) resolve))
+
+;;; A macro use links back to its let-syntax binder: in the simple-macro
+;;; example the (x 1) invocation refers to the x bound by let-syntax.
+(test-assert "uses-macro-invocation"
+  (let* ((tr (run-traced 'core input-simple-macro))
+         (binder-spans (map car (trace-binders tr))))
+    (any (lambda (u) (member (cdr u) binder-spans equal?))
+         (trace-uses tr resolve))))
+
+;;; Every use's target span is an actual binder span, so the linkage is
+;;; consistent across a real expansion.
+(test-assert "uses-point-to-binders"
+  (let* ((tr (run-traced 'core input-hyg))
+         (binder-spans (map car (trace-binders tr))))
+    (every (lambda (u) (member (cdr u) binder-spans equal?))
+           (trace-uses tr resolve))))
+
+;;; ----------------------------------------
 ;;; step-stores: replayed store agrees with every rule's authoritative store
 
 (define (store=? a b)

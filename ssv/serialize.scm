@@ -11,6 +11,7 @@
             value->json
             snapshots->json
             resolve->json
+            uses->json
             json-string
             json-escape-string
             json-array
@@ -114,6 +115,17 @@
                             (json-number (cdar e))
                             (json-symbol (cdr e)))))
         resolve)))
+
+;;; A use entry is ((use-start . use-end) . (binder-start . binder-end));
+;;; flatten to [use-start, use-end, binder-start, binder-end].
+(define (uses->json uses)
+  (json-array
+   (map (lambda (e)
+          (json-array (list (json-number (caar e))
+                            (json-number (cdar e))
+                            (json-number (cadr e))
+                            (json-number (cddr e)))))
+        uses)))
 
 ;;; ----------------------------------------
 ;;; Store

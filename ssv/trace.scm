@@ -31,6 +31,8 @@
           (cons 'final-store store)
           (cons 'snapshots (step-snapshots stx steps))
           (cons 'resolve (resolve-alist expanded store resolve-proc))
+          (cons 'binders (binder-alist steps))
+          (cons 'uses (use-alist steps resolve-proc))
           (cons 'stores (step-stores steps)))))
 
 (define (run-traced model stx)
@@ -91,6 +93,8 @@
           (cons "steps"       (json-array (map record->json (cdr (assq 'steps tr)))))
           (cons "snapshots"   (snapshots->json (cdr (assq 'snapshots tr))))
           (cons "resolve"     (resolve->json (cdr (assq 'resolve tr))))
+          (cons "binders"     (resolve->json (cdr (assq 'binders tr))))
+          (cons "uses"        (uses->json (cdr (assq 'uses tr))))
           (cons "stores"      (json-array (map store->json (cdr (assq 'stores tr)))))
           (cons "final-stx"   (value->json (cdr (assq 'final-stx tr))))
           (cons "final-ast"   (value->json (cdr (assq 'final-ast tr))))

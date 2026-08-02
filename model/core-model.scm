@@ -126,8 +126,8 @@
   (let* ([sym      (stx-form id)]
          [scopes   (stx-ctx id)]
          [binds    (store-binds store)]
-         [existing (assq sym binds)])
-    (emit-op 'bind sym scopes name)
+          [existing (assq sym binds)])
+    (emit-op 'bind sym scopes name (stx-span id))
     (if existing
         (make-store (store-counter store)
                     (map (match-lambda

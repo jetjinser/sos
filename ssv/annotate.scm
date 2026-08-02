@@ -11,9 +11,13 @@
   #:export (stx-span-alist
             step-snapshots
             resolve-alist
+            binder-alist
+            use-alist
             step-stores
             trace-snapshots
             trace-resolve
+            trace-binders
+            trace-uses
             trace-stores))
 
 ;;; ----------------------------------------
@@ -177,6 +181,79 @@
   (sort-by-span (resolve-into stx store resolve-proc '())))
 
 ;;; ----------------------------------------
+;;; Binder positions (where each fresh name was introduced)
+
+;;; The bind op carries the binder's source span as its 4th datum; collect
+;;; (span . name) entries so the frontend can link every use back to the
+;;; identifier that bound it.  Binders with no source span (macro-generated)
+;;; are skipped — there is nothing to point at.
+(define (binder-into records acc)
+  (if (null? records)
+      acc
+      (let ((rec (car records)))
+        (binder-into
+         (cdr records)
+         (if (and (eq? (car rec) 'op)
+                  (eq? (cadr rec) 'bind)
+                  (>= (length rec) 6)
+                  (pair? (list-ref rec 5)))
+             (cons (cons (list-ref rec 5) (list-ref rec 4)) acc)
+             acc)))))
+
+(define (binder-alist records)
+  (sort-by-span (binder-into records '())))
+
+;;; ----------------------------------------
+;;; Use sites (where bound identifiers are referenced)
+
+;;; Two kinds of reference reach a binder, both collected as (use-span .
+;;; binder-span):
+;;;  - variable use: the id rule fires on a reference to a bound variable; its
+;;;    before-stx is the use site and its tvar info carries the binder's stx,
+;;;    whose span identifies the binder (no resolution needed);
+;;;  - macro use: a macro-invoke's operator identifier refers to the macro's
+;;;    let-syntax binder; resolve it to a name and look the name up in the
+;;;    binder table.  resolve-proc keeps this phase-correct across models.
+
+;;; name -> binder span, inverted from the bind ops.
+(define (binder-name-index records)
+  (map (lambda (e) (cons (cdr e) (car e))) (binder-alist records)))
+
+(define (use-entry rec resolve-proc name-index)
+  (cond
+   [(and (eq? (car rec) 'rule) (eq? (cadr rec) 'id))
+    (let ((tv (assq 'tvar (list-ref rec 6))))
+      (and tv
+           (let ((use-span    (stx-span (caddr rec)))
+                 (binder-span (stx-span (cdr tv))))
+             (and use-span binder-span (cons use-span binder-span)))))]
+   [(and (eq? (car rec) 'rule) (eq? (cadr rec) 'macro-invoke))
+    (let* ((form  (stx-form (caddr rec)))
+           (first (and (pair? form) (car form))))
+      (and (stx? first) (stx-span first)
+           (let ((binder (assq (resolve-proc first (list-ref rec 4)) name-index)))
+             (and binder (cons (stx-span first) (cdr binder))))))]
+   [else #f]))
+
+(define (use-into records resolve-proc name-index acc)
+  (if (null? records)
+      acc
+      (let ((entry (use-entry (car records) resolve-proc name-index)))
+        (use-into (cdr records) resolve-proc name-index
+                  (if entry (cons entry acc) acc)))))
+
+;;; Sorted, with duplicates (a use re-expanded more than once) collapsed.
+(define (use-alist records resolve-proc)
+  (let ((name-index (binder-name-index records)))
+    (let loop ((entries (sort-by-span (use-into records resolve-proc name-index '())))
+               (out '()))
+      (cond
+       [(null? entries) (reverse out)]
+       [(and (pair? out) (equal? (car entries) (car out)))
+        (loop (cdr entries) out)]
+       [else (loop (cdr entries) (cons (car entries) out))]))))
+
+;;; ----------------------------------------
 ;;; Convenience: operate on a run-traced result alist
 
 (define (trace-snapshots trace)
@@ -187,6 +264,12 @@
   (resolve-alist (cdr (assq 'final-stx trace))
                  (cdr (assq 'final-store trace))
                  resolve-proc))
+
+(define (trace-binders trace)
+  (binder-alist (cdr (assq 'steps trace))))
+
+(define (trace-uses trace resolve-proc)
+  (use-alist (cdr (assq 'steps trace)) resolve-proc))
 
 (define (trace-stores trace)
   (step-stores (cdr (assq 'steps trace))))

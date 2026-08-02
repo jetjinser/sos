@@ -23,6 +23,8 @@ export class SsvSourceView extends LitElement {
     snapshot: { type: Array },
     prevSnapshot: { type: Array },
     resolve: { type: Array },
+    binders: { type: Array },
+    uses: { type: Array },
     editable: { type: Boolean },
   };
 
@@ -95,6 +97,17 @@ export class SsvSourceView extends LitElement {
       animation: fresh-in 550ms ease-out;
     }
     @keyframes fresh-in { from { opacity: 0.15; } to { opacity: 1; } }
+    /* Binder<->use hover: the definition gets a ring, its uses an underline
+       bar, all in the binding's colour — one gesture reveals the whole group */
+    .seg.hl-use {
+      background: color-mix(in oklab, var(--bind-c) 16%, transparent);
+      box-shadow: inset 0 -2px 0 var(--bind-c);
+    }
+    .seg.hl-binder {
+      background: color-mix(in oklab, var(--bind-c) 30%, transparent);
+      box-shadow: inset 0 0 0 1.5px var(--bind-c);
+      border-radius: 3px;
+    }
 
     /* ---- floating badges (out of flow so the textarea stays aligned) ---- */
     .chip, .dtag {
@@ -169,10 +182,14 @@ export class SsvSourceView extends LitElement {
     this.snapshot = null;
     this.prevSnapshot = null;
     this.resolve = null;
+    this.binders = null;
+    this.uses = null;
     this.editable = false;
     this._chipBoxes = null;
+    this._bindBoxes = null;
     this._focusScope = null;
     this._focusTimer = null;
+    this._bindingKey = null;
   }
 
   disconnectedCallback() {
@@ -186,6 +203,8 @@ export class SsvSourceView extends LitElement {
     if (!this.src && !this.editable) return html`<span class="empty">—</span>`;
 
     this._chipBoxes = null;
+    this._bindBoxes = null;
+    this._buildBindingMaps();
     const tokens = tokenizeSource(this.src);
     const spans = this.snapshot ?? [];
     const prevSpans = this.prevSnapshot ?? [];
@@ -321,11 +340,22 @@ export class SsvSourceView extends LitElement {
   // the code itself stays inert.
   _hoverMove(e) {
     const scope = this._chipAt(e.clientX, e.clientY);
-    e.currentTarget.style.cursor = scope ? "pointer" : "";
-    this._setFocus(scope);
+    if (scope) {
+      e.currentTarget.style.cursor = "pointer";
+      this._setFocus(scope);
+      this._applyBinding(null);
+      return;
+    }
+    const key = this._bindingAt(e.clientX, e.clientY);
+    e.currentTarget.style.cursor = key ? "pointer" : "";
+    this._setFocus(null);
+    this._applyBinding(key);
   }
 
-  _hoverLeave() { this._setFocus(null); }
+  _hoverLeave() {
+    this._setFocus(null);
+    this._applyBinding(null);
+  }
 
   _chipAt(x, y) {
     const code = this.renderRoot.querySelector(".code");
@@ -348,6 +378,61 @@ export class SsvSourceView extends LitElement {
         return b.scope;
     }
     return null;
+  }
+
+  // ---- binder <-> use linkage ------------------------------------------
+
+  // Index the binding data by segment key ("start,end"): binderByKey maps a
+  // binder span to its fresh name, useByKey maps a use span to its binder's
+  // key, and usesByBinder groups every use under its binder.  Hovering any
+  // member of a group lights the binder and all its uses.
+  _buildBindingMaps() {
+    this._binderByKey = new Map();
+    for (const [s, e, name] of this.binders ?? [])
+      this._binderByKey.set(`${s},${e}`, name);
+    this._useByKey = new Map();
+    this._usesByBinder = new Map();
+    for (const [us, ue, bs, be] of this.uses ?? []) {
+      const uk = `${us},${ue}`;
+      const bk = `${bs},${be}`;
+      this._useByKey.set(uk, bk);
+      if (!this._usesByBinder.has(bk)) this._usesByBinder.set(bk, []);
+      this._usesByBinder.get(bk).push(uk);
+    }
+  }
+
+  // The binding group under the cursor (a binder key), or null.
+  _bindingAt(x, y) {
+    const code = this.renderRoot.querySelector(".code");
+    if (!code) return null;
+    const base = code.getBoundingClientRect();
+    if (!this._bindBoxes) {
+      this._bindBoxes = [...this.renderRoot.querySelectorAll(".bind-binder, .bind-use")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          key: el.dataset.bindKey,
+          left: r.left - base.left, top: r.top - base.top,
+          right: r.right - base.left, bottom: r.bottom - base.top,
+        };
+      });
+    }
+    const px = x - base.left;
+    const py = y - base.top;
+    for (const b of this._bindBoxes) {
+      if (px >= b.left && px < b.right && py >= b.top && py < b.bottom)
+        return b.key;
+    }
+    return null;
+  }
+
+  _applyBinding(key) {
+    if (this._bindingKey === key) return;
+    this._bindingKey = key;
+    for (const el of this.renderRoot.querySelectorAll(".bind-binder, .bind-use")) {
+      const match = key != null && el.dataset.bindKey === key;
+      el.classList.toggle("hl-binder", match && el.classList.contains("bind-binder"));
+      el.classList.toggle("hl-use", match && el.classList.contains("bind-use"));
+    }
   }
 
   // ---- resolve chips (final binding) -----------------------------------
@@ -499,6 +584,24 @@ export class SsvSourceView extends LitElement {
       if (delta) style.push(`--fresh-c:${scopeColor(delta)}`);
     }
 
+    // Binder<->use membership: tag the segment with its binding group so a
+    // hover can light the binder together with every use (and vice versa).
+    const segKey = `${a},${b}`;
+    let bindKey = null;
+    let bindRole = null;
+    if (this._binderByKey.has(segKey)) {
+      bindKey = segKey;
+      bindRole = "binder";
+    } else if (this._useByKey.has(segKey)) {
+      bindKey = this._useByKey.get(segKey);
+      bindRole = "use";
+    }
+    if (bindRole) {
+      cls += ` bind-${bindRole}`;
+      const name = this._binderByKey.get(bindKey);
+      style.push(`--bind-c:${name ? scopeColor(name) : "hsl(220 15% 60%)"}`);
+    }
+
     const hint = setChip
       ? html`<span class="shint-row">
           ${[...setChip].reverse().map(
@@ -514,6 +617,7 @@ export class SsvSourceView extends LitElement {
 
     return html`<span class=${cls} style=${style.join(";")} title=${title}
                       data-scopes=${scopesNow.length ? scopesNow.join(" ") : nothing}
+                      data-bind-key=${bindKey ?? nothing}
       >${text}${startTags}${endChips}${hint}</span>`;
   }
 }
