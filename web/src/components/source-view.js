@@ -82,7 +82,21 @@ export class SsvSourceView extends LitElement {
     }
     .input::selection { background: hsl(215 70% 80% / 0.45); }
 
-    .code { color: hsl(222 22% 26%); min-height: 100%; }
+    .code { color: hsl(222 22% 26%); min-height: 100%; position: relative; }
+    /* binder->use arrows: an SVG overlay in .code content coordinates, so it
+       scrolls with the text; layered above the tints, highlights and chips,
+       but pointer-transparent so editing is never blocked */
+    .binding-arrows {
+      position: absolute; top: 0; left: 0;
+      z-index: 5;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .ba-line {
+      fill: none; stroke-width: 1.6; opacity: 0.7;
+      transition: stroke-dashoffset 300ms ease-out;
+    }
+    .ba-head { opacity: 0.85; }
 
     /* ---- segments ---- */
     .seg { border-radius: 2px; position: relative; }
@@ -204,6 +218,7 @@ export class SsvSourceView extends LitElement {
 
     this._chipBoxes = null;
     this._bindBoxes = null;
+    this._bindingKey = null;
     this._buildBindingMaps();
     const tokens = tokenizeSource(this.src);
     const spans = this.snapshot ?? [];
@@ -227,7 +242,7 @@ export class SsvSourceView extends LitElement {
         ),
       );
     }
-    const code = html`<div class="code">${segs}</div>`;
+    const code = html`<div class="code">${segs}<svg class="binding-arrows"></svg></div>`;
     const legend = this._legend(spans);
 
     if (!this.editable) return html`${legend}${code}`;
@@ -246,6 +261,12 @@ export class SsvSourceView extends LitElement {
   // Keep the textarea in sync without clobbering the caret while typing: only
   // assign when the value actually differs (e.g. an example was loaded).
   updated(changed) {
+    // Binding highlight is transient (tied to hover); after any re-render the
+    // segments are rebuilt, so drop stale arrows.
+    if (this._bindingKey == null) {
+      const svg = this.renderRoot.querySelector(".binding-arrows");
+      if (svg) svg.replaceChildren();
+    }
     if (!this.editable || !changed.has("src")) return;
     const ta = this.renderRoot.querySelector(".input");
     if (ta && ta.value !== this.src) ta.value = this.src;
@@ -401,24 +422,34 @@ export class SsvSourceView extends LitElement {
     }
   }
 
+  // Cache the binder/use segment boxes (with their group key and role) in
+  // .code content coordinates; shared by hit-testing and arrow drawing.
+  _ensureBindBoxes() {
+    if (this._bindBoxes) return this._bindBoxes;
+    const code = this.renderRoot.querySelector(".code");
+    if (!code) return (this._bindBoxes = []);
+    const base = code.getBoundingClientRect();
+    this._bindBoxes = [...this.renderRoot.querySelectorAll(".bind-binder, .bind-use")].map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        el,
+        key: el.dataset.bindKey,
+        role: el.classList.contains("bind-binder") ? "binder" : "use",
+        left: r.left - base.left, top: r.top - base.top,
+        right: r.right - base.left, bottom: r.bottom - base.top,
+      };
+    });
+    return this._bindBoxes;
+  }
+
   // The binding group under the cursor (a binder key), or null.
   _bindingAt(x, y) {
     const code = this.renderRoot.querySelector(".code");
     if (!code) return null;
     const base = code.getBoundingClientRect();
-    if (!this._bindBoxes) {
-      this._bindBoxes = [...this.renderRoot.querySelectorAll(".bind-binder, .bind-use")].map((el) => {
-        const r = el.getBoundingClientRect();
-        return {
-          key: el.dataset.bindKey,
-          left: r.left - base.left, top: r.top - base.top,
-          right: r.right - base.left, bottom: r.bottom - base.top,
-        };
-      });
-    }
     const px = x - base.left;
     const py = y - base.top;
-    for (const b of this._bindBoxes) {
+    for (const b of this._ensureBindBoxes()) {
       if (px >= b.left && px < b.right && py >= b.top && py < b.bottom)
         return b.key;
     }
@@ -432,6 +463,73 @@ export class SsvSourceView extends LitElement {
       const match = key != null && el.dataset.bindKey === key;
       el.classList.toggle("hl-binder", match && el.classList.contains("bind-binder"));
       el.classList.toggle("hl-use", match && el.classList.contains("bind-use"));
+    }
+    this._drawArrows(key);
+  }
+
+  // Draw a curved arrow from the binder to each of its uses for the active
+  // group.  Anchors on the facing edges, bezier bow, arrowhead at the use.
+  _drawArrows(key) {
+    const svg = this.renderRoot.querySelector(".binding-arrows");
+    const code = this.renderRoot.querySelector(".code");
+    if (!svg || !code) return;
+    svg.replaceChildren();
+    svg.setAttribute("width", code.scrollWidth);
+    svg.setAttribute("height", code.scrollHeight);
+    if (!key) return;
+    const boxes = this._ensureBindBoxes();
+    const binder = boxes.find((b) => b.key === key && b.role === "binder");
+    if (!binder) return;
+    const name = this._binderByKey.get(key);
+    const color = name ? scopeColor(name) : "hsl(220 15% 55%)";
+    const NS = "http://www.w3.org/2000/svg";
+    const by = (binder.top + binder.bottom) / 2;
+    for (const use of boxes) {
+      if (use.key !== key || use.role !== "use") continue;
+      const uy = (use.top + use.bottom) / 2;
+      const bCx = (binder.left + binder.right) / 2;
+      const uCx = (use.left + use.right) / 2;
+      const toRight = uCx >= bCx;
+      const s = toRight ? 1 : -1;
+      const x0 = toRight ? binder.right : binder.left;
+      const x1 = toRight ? use.left : use.right;
+      const dx = Math.max(24, Math.abs(x1 - x0) * 0.45);
+      // Same-line pairs bow below the text so the arc clears the glyphs;
+      // cross-line pairs leave/arrive horizontally through the gap.
+      const sameLine = Math.abs(uy - by) < 4;
+      const bow = sameLine ? Math.min(46, Math.abs(x1 - x0) * 0.35 + 14) : 0;
+      const cy0 = by + bow;
+      const cy1 = uy + bow;
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("class", "ba-line");
+      path.setAttribute("stroke", color);
+      path.setAttribute(
+        "d", `M ${x0} ${by} C ${x0 + s * dx} ${cy0}, ${x1 - s * dx} ${cy1}, ${x1} ${uy}`,
+      );
+      svg.appendChild(path);
+      // draw-on animation
+      const len = path.getTotalLength();
+      path.style.strokeDasharray = `${len}`;
+      path.style.strokeDashoffset = `${len}`;
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => (path.style.strokeDashoffset = "0")));
+      // arrowhead oriented along the curve's arrival tangent
+      const ax = s * dx;
+      const ay = uy - cy1;
+      const al = Math.hypot(ax, ay) || 1;
+      const ux = ax / al;
+      const uyn = ay / al;
+      const px = -uyn;
+      const py = ux;
+      const head = document.createElementNS(NS, "path");
+      head.setAttribute("class", "ba-head");
+      head.setAttribute("fill", color);
+      head.setAttribute(
+        "d",
+        `M ${x1} ${uy} L ${x1 - ux * 8 + px * 4} ${uy - uyn * 8 + py * 4}` +
+        ` L ${x1 - ux * 8 - px * 4} ${uy - uyn * 8 - py * 4} Z`,
+      );
+      svg.appendChild(head);
     }
   }
 
