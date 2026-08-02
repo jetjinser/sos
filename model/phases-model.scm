@@ -181,22 +181,22 @@
          ;; let-syntax
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'let-syntax))
-          (let*-values ([(id)          (cadr form)]
-                        [(rhs)         (caddr form)]
-                        [(body)        (cadddr form)]
-                        [(nam-new s1)  (alloc-name id store)]
-                        [(scp-new s2)  (alloc-scope id s1)]
-                        [(id-new)      (ph-stx-add ph id scp-new)]
-                        [(s3)          (ph-store-bind ph s2 id-new nam-new)]
-                        [(stx-exp s4)  (ph-expand (+ ph 1) rhs (primitives-env) '() s3)]
-                        [(transformer) (eval-ast (ph-parse (+ ph 1) stx-exp s4))]
-                        [(env-new)     (env-extend env nam-new transformer)]
-                        [(body-added)  (ph-stx-add ph body scp-new)]
-                        [(scps-p2)     (scps-union (list scp-new) scps-p)]
-                        [(body-exp s5) (ph-expand ph body-added env-new scps-p2 s4)])
-            (emit-rule 'let-syntax stx body-exp s5 env
-                       (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
-            (values body-exp s5)))
+           (let*-values ([(id)             (cadr form)]
+                         [(rhs)            (caddr form)]
+                         [(body)           (cadddr form)]
+                         [(nam-new s1)     (alloc-name id store)]
+                         [(scp-new s2)     (alloc-scope id s1)]
+                         [(id-new)         (ph-stx-add ph id scp-new)]
+                         [(s3)             (ph-store-bind ph s2 id-new nam-new)]
+                         [(stx-exp s4)     (ph-expand (+ ph 1) rhs (primitives-env) '() s3)]
+                         [(transformer s5) (eval-ast (ph-parse (+ ph 1) stx-exp s4) s4)]
+                         [(env-new)        (env-extend env nam-new transformer)]
+                         [(body-added)     (ph-stx-add ph body scp-new)]
+                         [(scps-p2)        (scps-union (list scp-new) scps-p)]
+                         [(body-exp s6)    (ph-expand ph body-added env-new scps-p2 s5)])
+             (emit-rule 'let-syntax stx body-exp s6 env
+                        (list (cons 'phase ph) (cons 'name nam-new) (cons 'scope scp-new)))
+             (values body-exp s6)))
          ;; macro invocation
          ((and (stx? first)
                (not (eq? (env-lookup env (ph-resolve ph first store))
@@ -206,13 +206,13 @@
                         [(val)            (env-lookup env (ph-resolve ph first store))]
                         [(stx-added)      (ph-stx-add ph stx scp-u)]
                         [(stx-flipped)    (ph-stx-flip ph stx-added scp-i)]
-                        [(result)         (eval-ast `(app ,val ,stx-flipped))]
+                        [(result s3)      (eval-ast `(app ,val ,stx-flipped) s2)]
                         [(result-flipped) (ph-stx-flip ph result scp-i)]
-                        [(expanded s3)    (ph-expand ph result-flipped env
-                                                     (scps-union (list scp-u) scps-p) s2)])
-            (emit-rule 'macro-invoke stx expanded s3 env
+                        [(expanded s4)    (ph-expand ph result-flipped env
+                                                     (scps-union (list scp-u) scps-p) s3)])
+            (emit-rule 'macro-invoke stx expanded s4 env
                        (list (cons 'phase ph) (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
-            (values expanded s3)))
+            (values expanded s4)))
          ;; application
          (else
           (let*-values ([(expanded s1) (ph-expand* ph '() form env scps-p store)]

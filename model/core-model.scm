@@ -244,20 +244,30 @@
      `(list-val ,@(map (cut subst <> var val) elts))]
     [ast ast]))
 
-(define (eval-ast ast)
+(define (eval-ast ast store)
   (match ast
     [('app ('fun ('var bvar) body) rand . rands)
-     (eval-ast (subst body bvar (eval-ast rand)))]
+     (let*-values ([(val s1)    (eval-ast rand store)]
+                   [(result s2) (eval-ast (subst body bvar val) s1)])
+       (values result s2))]
     [('app (? prim? rator) . rands)
-     (delta rator (map eval-ast rands))]
+     (let*-values ([(vals s1) (eval-ast* '() rands store)])
+       (values (delta rator vals) s1))]
     [('app rator . rands)
      (error "eval-ast: cannot apply" rator)]
-    [('fun . rest) ast]
+    [('fun . rest) (values ast store)]
     [('var v)
      (error "eval-ast: unbound variable" v)]
     [('list-val lv)
-     `(list-val ,@(map eval-ast lv))]
-    [ast ast]))
+     (let*-values ([(vals s1) (eval-ast* '() lv store)])
+       (values `(list-val ,@vals) s1))]
+    [ast (values ast store)]))
+
+(define (eval-ast* done todo store)
+  (if (null? todo)
+      (values (reverse done) store)
+      (let*-values ([(val s1) (eval-ast (car todo) store)])
+        (eval-ast* (cons val done) (cdr todo) s1))))
 
 ;;; ----------------------------------------
 ;;; Parse
@@ -313,17 +323,17 @@
      (values stx store)]
     ;; let-syntax
     [($ <stx> ((? (stx-is? 'let-syntax) ls) id rhs body))
-     (let*-values ([(nam-new s1)  (alloc-name  id store)]
-                   [(scp-new s2)  (alloc-scope id s1)]
-                   [(id-new)      (stx-add id scp-new)]
-                   [(s3)          (store-bind s2 id-new nam-new)]
-                   [(transformer) (eval-ast (parse rhs s3))]
-                   [(env-new)     (env-extend env nam-new transformer)]
-                   [(body-added)  (stx-add body scp-new)]
-                   [(body-exp s4) (expand body-added env-new s3)])
-       (emit-rule 'let-syntax stx body-exp s4 env
+     (let*-values ([(nam-new s1)     (alloc-name  id store)]
+                   [(scp-new s2)     (alloc-scope id s1)]
+                   [(id-new)         (stx-add id scp-new)]
+                   [(s3)             (store-bind s2 id-new nam-new)]
+                   [(transformer s4) (eval-ast (parse rhs s3) s3)]
+                   [(env-new)        (env-extend env nam-new transformer)]
+                   [(body-added)     (stx-add body scp-new)]
+                   [(body-exp s5)    (expand body-added env-new s4)])
+       (emit-rule 'let-syntax stx body-exp s5 env
                   (list (cons 'name nam-new) (cons 'scope scp-new)))
-       (values body-exp s4))]
+       (values body-exp s5))]
     ;; macro invocation
     [($ <stx> ((? shadowed-stx? first) . rest))
      (let*-values ([(scp-u s1)       (alloc-scope (make-stx 'a '() #f) store)]
@@ -331,12 +341,12 @@
                    [(val)            (env-lookup env (resolve first store))]
                    [(stx-added)      (stx-add stx scp-u)]
                    [(stx-flipped)    (stx-flip stx-added scp-i)]
-                   [(result)         (eval-ast `(app ,val ,stx-flipped))]
+                   [(result s3)      (eval-ast `(app ,val ,stx-flipped) s2)]
                    [(result-flipped) (stx-flip result scp-i)]
-                   [(expanded s3)    (expand result-flipped env s2)])
-       (emit-rule 'macro-invoke stx expanded s3 env
+                   [(expanded s4)    (expand result-flipped env s3)])
+       (emit-rule 'macro-invoke stx expanded s4 env
                   (list (cons 'scp-u scp-u) (cons 'scp-i scp-i)))
-       (values expanded s3))]
+       (values expanded s4))]
     ;; application
     [($ <stx> (and (first . rest) form) ctx)
      (let*-values ([(expanded s1) (expand* '() form env store)]
