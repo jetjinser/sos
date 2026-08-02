@@ -7,6 +7,7 @@ import "./components/step-controls.js";
 import "./components/source-view.js";
 import "./components/feature-bar.js";
 import "./components/step-detail.js";
+import "./components/step-scrubber.js";
 import "./components/ast-view.js";
 
 const EXAMPLES = {
@@ -36,7 +37,7 @@ export class SsvApp extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto 1fr;
       height: 100vh; box-sizing: border-box;
       padding: clamp(1.2rem, 3vw, 3rem);
       gap: clamp(0.9rem, 1.6vw, 1.4rem);
@@ -194,6 +195,11 @@ export class SsvApp extends LitElement {
           @speed-change=${this._onSpeed}></ssv-step-controls>
         <ssv-feature-bar .features=${this._features}></ssv-feature-bar>
       </div>
+
+      <ssv-step-scrubber .steps=${this._trace?.steps ?? []}
+                         .index=${this._index}
+                         .playing=${this._playing}
+                         @step-to=${this._onStepTo}></ssv-step-scrubber>
 
       <div class="main">
         <div class="side">
