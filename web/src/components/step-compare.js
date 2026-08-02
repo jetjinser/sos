@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
+import { diffStx } from "../lib/stx-diff.js";
 import "./stx-tree.js";
 
 // Macro-stepper style comparison: the syntax object before and after the
@@ -13,10 +14,37 @@ export class SsvStepCompare extends LitElement {
   };
 
   static styles = css`
-    :host { display: block; font-family: inherit; height: 100%; min-height: 0; }
+    :host {
+      display: flex; flex-direction: column;
+      font-family: inherit; height: 100%; min-height: 0;
+    }
+    .diff-legend {
+      display: flex; align-items: center; gap: 1rem;
+      flex-shrink: 0;
+      margin-bottom: 0.45rem;
+      font-size: 0.62rem; color: hsl(220 12% 50%);
+    }
+    .dl { display: inline-flex; align-items: center; gap: 5px; }
+    .dl::before {
+      content: ""; width: 10px; height: 10px; border-radius: 3px;
+    }
+    .dl.add::before {
+      background: hsl(145 60% 90%);
+      box-shadow: inset 0 0 0 1.5px hsl(145 50% 44%);
+    }
+    .dl.rem::before {
+      background: hsl(4 72% 93%);
+      box-shadow: inset 0 0 0 1.5px hsl(4 58% 58%);
+    }
+    .dl.ctx::before {
+      background: hsl(220 15% 93%);
+      border: none;
+      border-left: 2.5px solid hsl(220 20% 72%);
+      border-radius: 1px;
+    }
     .compare {
       display: flex; align-items: stretch; gap: 0.7rem;
-      height: 100%; min-height: 0;
+      flex: 1; min-height: 0;
     }
     .pane {
       flex: 1 1 0; min-width: 0;
@@ -99,19 +127,32 @@ export class SsvStepCompare extends LitElement {
       </div>`;
     }
     const name = step.type === "rule" ? step.rule : step.op;
-    return html`<div class="compare">
-      <div class="pane before">
-        <div class="pane-head"><span class="tag before">before</span>
-          <span class="rule-name">${name}</span></div>
-        <div class="pane-body"><ssv-stx-tree .stx=${rw.before}></ssv-stx-tree></div>
+    const d = diffStx(rw.before, rw.after);
+    return html`
+      <div class="diff-legend">
+        <span class="dl add">new / changed</span>
+        <span class="dl rem">replaced</span>
+        <span class="dl ctx">unchanged context</span>
       </div>
-      <div class="arrow">⟶</div>
-      <div class="pane after">
-        <div class="pane-head"><span class="tag after">after</span>
-          <span class="rule-name">${name}</span></div>
-        <div class="pane-body"><ssv-stx-tree .stx=${rw.after}></ssv-stx-tree></div>
-      </div>
-    </div>`;
+      <div class="compare">
+        <div class="pane before">
+          <div class="pane-head"><span class="tag before">before</span>
+            <span class="rule-name">${name}</span></div>
+          <div class="pane-body">
+            <ssv-stx-tree .stx=${rw.before}
+                          .diff=${{ paths: d.removed, kind: "removed" }}></ssv-stx-tree>
+          </div>
+        </div>
+        <div class="arrow">⟶</div>
+        <div class="pane after">
+          <div class="pane-head"><span class="tag after">after</span>
+            <span class="rule-name">${name}</span></div>
+          <div class="pane-body">
+            <ssv-stx-tree .stx=${rw.after}
+                          .diff=${{ paths: d.added, kind: "added" }}></ssv-stx-tree>
+          </div>
+        </div>
+      </div>`;
   }
 
   _rewrite(step) {

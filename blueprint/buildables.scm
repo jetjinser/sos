@@ -78,6 +78,7 @@
     "web/src/components/ast-view.js"
     "web/src/lib/scope-colors.js"
     "web/src/lib/sexpr.js"
+    "web/src/lib/stx-diff.js"
     "web/src/lib/wasm-features.js"
     "package-lock.json"))
 
