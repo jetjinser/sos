@@ -4,9 +4,11 @@ import { keyed } from "lit/directives/keyed.js";
 // A video-editor style timeline for the expansion trace.  Each step is a clip
 // (rules tall + cool, ops short + warm) labelled with its name — full when the
 // clip is wide, elided when dense.  A playhead glides across; click to seek,
-// drag to scrub.  Below the strip a fixed readout names the hovered (or
-// current) step and lists its info, so details have a steady home instead of
-// a floating tooltip.
+// drag to scrub.  The wheel zooms in/out (anchored under the cursor) to a
+// window of steps for precise navigation on dense traces; the window follows
+// the playhead as it advances, and double-click (or the zoom badge) resets to
+// the full overview.  Below the strip a fixed readout names the hovered (or
+// current) step and lists its info.
 export class SsvStepScrubber extends LitElement {
   static properties = {
     steps: { type: Array },
@@ -14,6 +16,8 @@ export class SsvStepScrubber extends LitElement {
     playing: { type: Boolean },
     _hover: { state: true },
     _dragging: { state: true },
+    _zoom: { state: true },
+    _panStart: { state: true },
   };
 
   static styles = css`
@@ -84,11 +88,15 @@ export class SsvStepScrubber extends LitElement {
 
     /* ---- readout ---- */
     .readout {
-      display: flex; align-items: center; gap: 0.55rem;
+      display: flex; align-items: center;
       min-height: 24px;
       margin-top: 6px;
       padding: 0 2px;
       font-size: 0.7rem;
+    }
+    .r-left {
+      display: flex; align-items: center; gap: 0.55rem;
+      min-width: 0;
     }
     .r-idx {
       font-size: 0.62rem; color: hsl(220 10% 55%);
@@ -125,6 +133,23 @@ export class SsvStepScrubber extends LitElement {
       from { opacity: 0; transform: translateY(3px); }
       to   { opacity: 1; transform: none; }
     }
+    .zoom-badge {
+      margin-left: auto;
+      flex-shrink: 0;
+      font-family: inherit; font-size: 0.6rem; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      padding: 2px 9px;
+      border: 1px solid hsl(220 20% 82%);
+      border-radius: 10px;
+      background: hsl(220 30% 97%);
+      color: hsl(220 25% 42%);
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .zoom-badge:hover {
+      background: hsl(220 45% 93%);
+      border-color: hsl(220 35% 68%);
+    }
   `;
 
   constructor() {
@@ -134,12 +159,76 @@ export class SsvStepScrubber extends LitElement {
     this.playing = false;
     this._hover = null;
     this._dragging = false;
+    this._zoom = 1;
+    this._panStart = 0;
   }
+
+  // ---- zoom window -------------------------------------------------------
+
+  _maxZoom() {
+    return Math.max(1, Math.ceil(this.steps.length / 5));
+  }
+
+  _windowSize() {
+    return Math.max(1, Math.ceil(this.steps.length / this._zoom));
+  }
+
+  _clampedStart(ws) {
+    const n = this.steps.length;
+    return Math.min(Math.max(0, this._panStart), Math.max(0, n - ws));
+  }
+
+  // Keep the playhead inside the window as it moves (minimal slide).  Only
+  // on index/steps changes — a wheel zoom keeps its cursor anchor instead.
+  willUpdate(changed) {
+    if (changed.has("steps")) {
+      this._zoom = 1;
+      this._panStart = 0;
+    }
+    if (changed.has("index") || changed.has("steps")) {
+      const ws = this._windowSize();
+      if (this.index < this._panStart) this._panStart = this.index;
+      else if (this.index >= this._panStart + ws) this._panStart = this.index - ws + 1;
+      this._panStart = this._clampedStart(ws);
+    }
+  }
+
+  _resetZoom() {
+    this._zoom = 1;
+    this._panStart = 0;
+  }
+
+  // Wheel zoom, anchored so the step under the cursor stays put.
+  _wheel(e) {
+    e.preventDefault();
+    const n = this.steps.length;
+    if (!n) return;
+    const track = this.renderRoot.querySelector(".track");
+    const rect = track.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const ws = this._windowSize();
+    const start = this._clampedStart(ws);
+    const visCount = Math.min(ws, n - start);
+    const anchor = start + frac * visCount;
+    const factor = e.deltaY < 0 ? 1.35 : 1 / 1.35;
+    const zoom = Math.min(this._maxZoom(), Math.max(1, this._zoom * factor));
+    const nws = Math.max(1, Math.ceil(n / zoom));
+    this._zoom = zoom;
+    this._panStart = Math.min(Math.max(0, Math.round(anchor - frac * nws)),
+                              Math.max(0, n - nws));
+  }
+
+  // ---- render ------------------------------------------------------------
 
   render() {
     const n = this.steps.length;
     if (!n) return nothing;
-    const pos = ((this.index + 0.5) / n) * 100;
+    const ws = this._windowSize();
+    const start = this._clampedStart(ws);
+    const end = Math.min(n, start + ws);
+    const visCount = end - start;
+    const inView = this.index >= start && this.index < end;
+    const pos = inView ? ((this.index - start + 0.5) / visCount) * 100 : null;
     const wrapCls = `wrap${this._dragging ? " dragging" : ""}${this.playing ? " playing" : ""}`;
     return html`
       <div class=${wrapCls}>
@@ -148,11 +237,13 @@ export class SsvStepScrubber extends LitElement {
              @pointermove=${this._move}
              @pointerup=${this._up}
              @pointercancel=${this._up}
-             @mouseleave=${this._leave}>
-          ${this.steps.map((s, i) => this._seg(s, i))}
-          <div class="playhead" style="left:${pos}%"></div>
+             @mouseleave=${this._leave}
+             @wheel=${this._wheel}
+             @dblclick=${this._resetZoom}>
+          ${this.steps.slice(start, end).map((s, j) => this._seg(s, start + j))}
+          ${pos != null ? html`<div class="playhead" style="left:${pos}%"></div>` : nothing}
         </div>
-        ${this._readout()}
+        ${this._readout(start, end, ws < n)}
       </div>`;
   }
 
@@ -167,35 +258,52 @@ export class SsvStepScrubber extends LitElement {
   }
 
   // The step the eye is on: whichever clip is hovered, else the playhead.
-  _readout() {
+  _readout(start, end, zoomed) {
     const n = this.steps.length;
     const i = this._hover ?? this.index;
     const step = this.steps[i];
-    if (!step) return html`<div class="readout"><span class="r-empty">—</span></div>`;
+    return html`<div class="readout">
+      <div class="r-left">
+        ${step
+          ? keyed(i, this._stepInfo(step, i, n))
+          : html`<span class="r-empty">—</span>`}
+      </div>
+      ${zoomed
+        ? html`<button class="zoom-badge" @click=${this._resetZoom}
+                       title="double-click the track to reset">
+            ${this._zoom.toFixed(1)}× · ${start + 1}–${end} / ${n}
+          </button>`
+        : nothing}
+    </div>`;
+  }
+
+  _stepInfo(step, i, n) {
     const isRule = step.type === "rule";
     const name = isRule ? step.rule : step.op;
     const info = Object.entries(step.info ?? {});
-    return html`<div class="readout">
-      ${keyed(i, html`<span class="r-in" style="display:contents">
-        <span class="r-idx">${i + 1} / ${n}</span>
-        <span class="r-badge ${isRule ? "rule" : "op"}">
-          <span class="r-kind">${isRule ? "rule" : "op"}</span>
-          <span class="r-name">${name}</span>
-        </span>
-        ${info.length
-          ? html`<span class="r-info">${info.map(([k, v]) =>
-              html`<span><b>${k}</b>=${typeof v === "object" ? JSON.stringify(v) : v}</span>`)}
-            </span>`
-          : nothing}
-      </span>`)}
-    </div>`;
+    return html`<span class="r-in" style="display:contents">
+      <span class="r-idx">${i + 1} / ${n}</span>
+      <span class="r-badge ${isRule ? "rule" : "op"}">
+        <span class="r-kind">${isRule ? "rule" : "op"}</span>
+        <span class="r-name">${name}</span>
+      </span>
+      ${info.length
+        ? html`<span class="r-info">${info.map(([k, v]) =>
+            html`<span><b>${k}</b>=${typeof v === "object" ? JSON.stringify(v) : v}</span>`)}
+          </span>`
+        : nothing}
+    </span>`;
   }
 
   _indexFromEvent(e) {
     const track = this.renderRoot.querySelector(".track");
     const rect = track.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    return Math.min(this.steps.length - 1, Math.floor(frac * this.steps.length));
+    const n = this.steps.length;
+    const ws = this._windowSize();
+    const start = this._clampedStart(ws);
+    const visCount = Math.min(ws, n - start);
+    return Math.min(start + visCount - 1, start + Math.floor(frac * visCount));
   }
 
   _seek(i) {
