@@ -50,12 +50,20 @@ export class SsvStxTree extends LitElement {
     return this._node(this.stx);
   }
 
-  _node(stx) {
-    if (!stx || typeof stx !== "object") {
-      return html`<span class="node">${String(stx ?? "·")}</span>`;
+  _node(x) {
+    if (x == null || typeof x !== "object") {
+      return html`<span class="node leaf">${String(x ?? "·")}</span>`;
     }
-    const form = stx.form;
-    const scopes = ctxScopes(stx.ctx);
+    // Raw AST list (plain array, no ctx) — local/defs steps carry these
+    if (Array.isArray(x)) {
+      return html`
+        <div class="node compound">
+          <div class="header"><span class="form-tag">(${x.length})</span></div>
+          <div class="children">${x.map((c) => this._node(c))}</div>
+        </div>`;
+    }
+    const form = x.form;
+    const scopes = ctxScopes(x.ctx);
     const badges = scopes.map(
       (s) => html`<span class="scp" style="background:${scopeColor(s)}"
                         title=${s}>${s}</span>`,
@@ -75,7 +83,7 @@ export class SsvStxTree extends LitElement {
     }
 
     return html`
-      <span class="node" style="border-color:${scopes.length ? scopeColor(scopes[0]) : "#ccc"}">
+      <span class="node leaf" style="border-color:${scopes.length ? scopeColor(scopes[0]) : "#ccc"}">
         <span class="form-atom">${String(form)}</span>
         ${badges}
       </span>`;

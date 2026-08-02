@@ -8,6 +8,7 @@ import "./components/source-view.js";
 import "./components/feature-bar.js";
 import "./components/step-detail.js";
 import "./components/step-scrubber.js";
+import "./components/step-compare.js";
 import "./components/ast-view.js";
 
 const EXAMPLES = {
@@ -32,6 +33,7 @@ export class SsvApp extends LitElement {
     _src: { state: true },
     _model: { state: true },
     _features: { state: true },
+    _view: { state: true },
   };
 
   static styles = css`
@@ -73,6 +75,32 @@ export class SsvApp extends LitElement {
       box-shadow: 0 1px 2px hsl(220 30% 20% / 0.05),
                   0 8px 24px hsl(220 30% 30% / 0.07);
     }
+    /* IDE-style tabs switching between the source and the macro-stepper
+       expansion comparison; both stay mounted so neither loses state */
+    .view-tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 0.6rem;
+      border-bottom: 1px solid hsl(40 25% 85%);
+      flex-shrink: 0;
+    }
+    .vtab {
+      font-family: inherit; font-size: 0.72rem; font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 0.3rem 0.85rem 0.4rem;
+      border: none; border-bottom: 2px solid transparent;
+      background: transparent;
+      color: hsl(38 18% 52%);
+      cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease,
+                  background-color 140ms ease;
+    }
+    .vtab:hover { color: hsl(38 40% 38%); background: hsl(40 40% 94% / 0.6); }
+    .vtab.on {
+      color: hsl(32 65% 38%);
+      border-bottom-color: hsl(40 70% 52%);
+    }
+    .view { display: none; flex: 1; min-height: 0; }
+    .view.show { display: flex; flex-direction: column; }
     .side {
       overflow: auto; min-height: 0;
       background: hsl(0 0% 100% / 0.85);
@@ -133,6 +161,7 @@ export class SsvApp extends LitElement {
     this._src = "";
     this._model = "core";
     this._features = [];
+    this._view = "source";
   }
 
   async connectedCallback() {
@@ -214,15 +243,27 @@ export class SsvApp extends LitElement {
           <ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>
         </div>
         <div class="editor-panel">
+          <div class="view-tabs">
+            <button class="vtab ${this._view === "source" ? "on" : ""}"
+                    @click=${() => (this._view = "source")}>source</button>
+            <button class="vtab ${this._view === "expansion" ? "on" : ""}"
+                    @click=${() => (this._view = "expansion")}>expansion</button>
+          </div>
           ${this._runError
             ? html`<div class="run-error">${this._runError}</div>`
             : nothing}
-          <ssv-source-view editable
-            .src=${this._src}
-            .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
-            .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
-            .resolve=${this._trace?.resolve ?? null}
-            @code-input=${this._onCodeInput}></ssv-source-view>
+          <div class="view ${this._view === "source" ? "show" : ""}">
+            <ssv-source-view editable
+              .src=${this._src}
+              .snapshot=${this._trace?.snapshots?.[this._index] ?? null}
+              .prevSnapshot=${this._index > 0 ? this._trace?.snapshots?.[this._index - 1] ?? null : null}
+              .resolve=${this._trace?.resolve ?? null}
+              @code-input=${this._onCodeInput}></ssv-source-view>
+          </div>
+          <div class="view ${this._view === "expansion" ? "show" : ""}">
+            <ssv-step-compare .step=${this._step}
+                              .index=${this._index}></ssv-step-compare>
+          </div>
         </div>
       </div>
     `;
