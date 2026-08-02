@@ -26,4 +26,17 @@
 (test-assert "get-identity"
   (term=? (run input-get-identity) '(fun (var a:4) (fun (var a:6) (var a:4)))))
 
+;;; ----------------------------------------
+;;; Syntax API primitives
+
+(test-assert "bound-identifier=?-same-ctx"
+  (delta 'bound-identifier=?
+         (list (make-stx 'x '(s1 s2) #f)
+               (make-stx 'y '(s1 s2) #f))))
+
+(test-assert "bound-identifier=?-diff-ctx"
+  (not (delta 'bound-identifier=?
+              (list (make-stx 'x '(s1) #f)
+                    (make-stx 'x '(s2) #f)))))
+
 (test-end "model-core")
