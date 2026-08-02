@@ -43,130 +43,41 @@
   (string->stx "(lambda z (let-syntax x (lambda s (syntax z)) (lambda z (x))))"))
 
 (define input-hyg
-  (string->stx (string-append
-                "(lambda z (let-syntax x (lambda s"
-                " (MKS (LIST (syntax lambda) (syntax z) (CAR (CDR (SE s))))"
-                " (syntax here))) (x z)))")))
+  (string->stx "(lambda z (let-syntax x (lambda s (datum->syntax (syntax here) (LIST (syntax lambda) (syntax z) (CAR (CDR (syntax->datum s)))))) (x z)))"))
 
 (define input-thunk
-  (string->stx (string-append
-                "(let-syntax thunk (lambda e"
-                " (MKS (LIST (syntax lambda) (syntax a) (CAR (CDR (SE e)))) e))"
-                " (((lambda a (thunk (+ a 1))) 5) 0))")))
+  (string->stx "(let-syntax thunk (lambda e (datum->syntax e (LIST (syntax lambda) (syntax a) (CAR (CDR (syntax->datum e)))))) (((lambda a (thunk (+ a 1))) 5) 0))"))
 
 (define input-get-identity
-  (string->stx (string-append
-                "(let-syntax get-identity (lambda e"
-                " (MKS (LIST (syntax lambda) (syntax a)"
-                " (MKS (LIST (syntax lambda) (CAR (CDR (SE e))) (syntax a)) e)) e))"
-                " (get-identity a))")))
+  (string->stx "(let-syntax get-identity (lambda e (datum->syntax e (LIST (syntax lambda) (syntax a) (datum->syntax e (LIST (syntax lambda) (CAR (CDR (syntax->datum e))) (syntax a)))))) (get-identity a))"))
 
 (define input-prune
-  (string->stx (string-append
-                "(let-syntax x (lambda e"
-                " ((lambda id1"
-                " ((lambda id2"
-                " (MKS (LIST (syntax let-syntax) (syntax f)"
-                " (MKS (LIST (syntax lambda) id2"
-                " (MKS (LIST (syntax CAR)"
-                " (MKS (LIST (syntax CDR)"
-                " (MKS (LIST (syntax SE) id1) e)) e)) e)) e)"
-                " (syntax (f 3))) e))"
-                " (syntax y))) (syntax y))) (x))")))
+  (string->stx "(let-syntax x (lambda e ((lambda id1 ((lambda id2 (datum->syntax e (LIST (syntax let-syntax) (syntax f) (datum->syntax e (LIST (syntax lambda) id2 (datum->syntax e (LIST (syntax CAR) (datum->syntax e (LIST (syntax CDR) (datum->syntax e (LIST (syntax syntax->datum) id1)))))))) (syntax (f 3))))) (syntax y))) (syntax y))) (x))"))
 
 (define input-gen
-  (string->stx (string-append
-                "(let-syntax x (lambda e"
-                " ((lambda id1"
-                " ((lambda id2"
-                " (MKS (LIST (syntax lambda) id2 id1) e))"
-                " (syntax y))) (syntax y))) (x))")))
+  (string->stx "(let-syntax x (lambda e ((lambda id1 ((lambda id2 (datum->syntax e (LIST (syntax lambda) id2 id1))) (syntax y))) (syntax y))) (x))"))
 
 (define input-local-value
-  (string->stx (string-append
-                "(let-syntax a 8"
-                " (let-syntax b 9"
-                " (let-syntax x (lambda s"
-                " (MKS (LIST (syntax quote)"
-                " (MKS (LOCAL-VALUE (CAR (CDR (SE s)))) (syntax here)))"
-                " (syntax here))) (x a))))")))
+  (string->stx "(let-syntax a 8 (let-syntax b 9 (let-syntax x (lambda s (datum->syntax (syntax here) (LIST (syntax quote) (datum->syntax (syntax here) (LOCAL-VALUE (CAR (CDR (syntax->datum s)))))))) (x a))))"))
 
 (define input-local-expand
-  (string->stx (string-append
-                "(let-syntax q (lambda s (syntax (CAR 8)))"
-                " (let-syntax x (lambda s"
-                " (CAR (CDR (SE (LOCAL-EXPAND (CAR (CDR (SE s))) (LIST))))))"
-                " (x (q))))")))
+  (string->stx "(let-syntax q (lambda s (syntax (CAR 8))) (let-syntax x (lambda s (CAR (CDR (syntax->datum (LOCAL-EXPAND (CAR (CDR (syntax->datum s))) (LIST)))))) (x (q))))"))
 
 (define input-local-expand-stop
-  (string->stx (string-append
-                "(let-syntax p (lambda s (quote 0))"
-                " (let-syntax q (lambda s (syntax (CAR 8)))"
-                " (let-syntax x (lambda s"
-                " (CAR (CDR (SE (LOCAL-EXPAND (CAR (CDR (SE s)))"
-                " (LIST (syntax p)))))))"
-                " (x (q)))))")))
+  (string->stx "(let-syntax p (lambda s (quote 0)) (let-syntax q (lambda s (syntax (CAR 8))) (let-syntax x (lambda s (CAR (CDR (syntax->datum (LOCAL-EXPAND (CAR (CDR (syntax->datum s))) (LIST (syntax p))))))) (x (q)))))"))
 
 (define input-local-binder
-  (string->stx (string-append
-                "(let-syntax q (lambda e"
-                " (MKS (LIST (syntax quote) (CAR (CDR (SE e)))) e))"
-                " (let-syntax a (lambda e"
-                " (MKS (LIST (syntax lambda)"
-                " (LOCAL-BINDER"
-                " (CAR (CDR (SE (LOCAL-EXPAND (CAR (CDR (SE e))) (LIST))))))"
-                " (CAR (CDR (CDR (SE e))))) e))"
-                " (a (q x) x)))")))
+  (string->stx "(let-syntax q (lambda e (datum->syntax e (LIST (syntax quote) (CAR (CDR (syntax->datum e)))))) (let-syntax a (lambda e (datum->syntax e (LIST (syntax lambda) (LOCAL-BINDER (CAR (CDR (syntax->datum (LOCAL-EXPAND (CAR (CDR (syntax->datum e))) (LIST)))))) (CAR (CDR (CDR (syntax->datum e))))))) (a (q x) x)))"))
 
 (define input-box
-  (string->stx (string-append
-                "(let-syntax m (lambda e"
-                " (MKS (LIST (syntax quote)"
-                " (MKS ((lambda b (UNBOX b)) (BOX 0)) e)) e)) (m))")))
+  (string->stx "(let-syntax m (lambda e (datum->syntax e (LIST (syntax quote) (datum->syntax e ((lambda b (UNBOX b)) (BOX 0)))))) (m))"))
 
 (define input-set-box
-  (string->stx (string-append
-                "(let-syntax m (lambda e"
-                " (MKS (LIST (syntax quote)"
-                " (MKS ((lambda b ((lambda x (UNBOX b)) (SET-BOX! b 1)))"
-                " (BOX 0)) e)) e)) (m))")))
+  (string->stx "(let-syntax m (lambda e (datum->syntax e (LIST (syntax quote) (datum->syntax e ((lambda b ((lambda x (UNBOX b)) (SET-BOX! b 1))) (BOX 0)))))) (m))"))
 
 (define input-defs-shadow
-  (string->stx (string-append
-                "(let-syntax call (lambda s"
-                " (MKS (LIST (CAR (CDR (SE s)))) (syntax here)))"
-                " (let-syntax p (lambda s (syntax 0))"
-                " (let-syntax q (lambda s"
-                " ((lambda defs"
-                " ((lambda ignored"
-                " (MKS (LIST (syntax lambda)"
-                " (LOCAL-BINDER"
-                " (CAR (CDR (SE (LOCAL-EXPAND"
-                " (MKS (LIST (syntax quote) (CAR (CDR (SE s)))) (syntax here))"
-                " (LIST) defs)))))"
-                " (LOCAL-EXPAND (CAR (CDR (CDR (SE s))))"
-                " (LIST (syntax call)) defs))"
-                " (syntax here)))"
-                " (DEF-BIND defs (CAR (CDR (SE s))))))"
-                " (NEW-DEFS)))"
-                " (q p (call p)))))")))
+  (string->stx "(let-syntax call (lambda s (datum->syntax (syntax here) (LIST (CAR (CDR (syntax->datum s)))))) (let-syntax p (lambda s (syntax 0)) (let-syntax q (lambda s ((lambda defs ((lambda ignored (datum->syntax (syntax here) (LIST (syntax lambda) (LOCAL-BINDER (CAR (CDR (syntax->datum (LOCAL-EXPAND (datum->syntax (syntax here) (LIST (syntax quote) (CAR (CDR (syntax->datum s))))) (LIST) defs))))) (LOCAL-EXPAND (CAR (CDR (CDR (syntax->datum s)))) (LIST (syntax call)) defs)))) (DEF-BIND defs (CAR (CDR (syntax->datum s)))))) (NEW-DEFS))) (q p (call p)))))"))
 
 (define input-defs-local-macro
-  (string->stx (string-append
-                "(let-syntax call (lambda s"
-                " (MKS (LIST (CAR (CDR (SE s)))) (syntax here)))"
-                " (let-syntax p (lambda s (syntax 0))"
-                " (let-syntax q (lambda s"
-                " ((lambda defs"
-                " ((lambda ignored"
-                " (MKS (LIST (syntax lambda)"
-                " (CAR (CDR (SE (LOCAL-EXPAND"
-                " (MKS (LIST (syntax quote) (CAR (CDR (SE s)))) (syntax here))"
-                " (LIST) defs))))"
-                " (LOCAL-EXPAND (CAR (CDR (CDR (SE s)))) (LIST) defs))"
-                " (syntax here)))"
-                " (DEF-BIND defs (CAR (CDR (SE s)))"
-                " (MKS (LIST (syntax lambda) (syntax s)"
-                " (CAR (CDR (CDR (CDR (SE s)))))) (syntax here)))))"
-                " (NEW-DEFS)))"
-                " (q p (call p) (syntax 13)))))")))
+  (string->stx "(let-syntax call (lambda s (datum->syntax (syntax here) (LIST (CAR (CDR (syntax->datum s)))))) (let-syntax p (lambda s (syntax 0)) (let-syntax q (lambda s ((lambda defs ((lambda ignored (datum->syntax (syntax here) (LIST (syntax lambda) (CAR (CDR (syntax->datum (LOCAL-EXPAND (datum->syntax (syntax here) (LIST (syntax quote) (CAR (CDR (syntax->datum s))))) (LIST) defs)))) (LOCAL-EXPAND (CAR (CDR (CDR (syntax->datum s)))) (LIST) defs)))) (DEF-BIND defs (CAR (CDR (syntax->datum s))) (datum->syntax (syntax here) (LIST (syntax lambda) (syntax s) (CAR (CDR (CDR (CDR (syntax->datum s)))))))))) (NEW-DEFS))) (q p (call p) (syntax 13)))))"))
+

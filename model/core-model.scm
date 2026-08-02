@@ -200,20 +200,20 @@
 ;;; Primitives (δ)
 
 (define (prim? x)
-  (memq x '(SE MKS + - CONS CAR CDR LIST
+  (memq x '(syntax->datum datum->syntax + - CONS CAR CDR LIST
             LOCAL-VALUE LOCAL-EXPAND LOCAL-BINDER
             BOX UNBOX SET-BOX! NEW-DEFS DEF-BIND)))
 
 (define (delta prim args)
   (match (cons prim args)
-    [('SE   stx)         (stx-form stx)]
-    [('CAR  (head . _))  head]
-    [('CDR  (_ . tail))  tail]
-    [('MKS  val ctx-stx) (make-stx val (stx-ctx ctx-stx) #f)]
-    [('+    a   b)       (+ a b)]
-    [('-    a   b)       (- a b)]
-    [('CONS a   b)       (cons a b)]
-    [('LIST . elts)     elts]
+    [('syntax->datum stx)      (stx-form stx)]
+    [('datum->syntax id datum) (make-stx datum (stx-ctx id) #f)]
+    [('CAR (head . _))         head]
+    [('CDR (_ . tail))         tail]
+    [('+ a b)                  (+ a b)]
+    [('- a b)                  (- a b)]
+    [('CONS a b)               (cons a b)]
+    [('LIST . elts)            elts]
     [_ (error "delta: unknown primitive or bad arity" prim args)]))
 
 ;;; ----------------------------------------

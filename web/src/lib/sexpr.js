@@ -56,7 +56,7 @@ export function tokenizeSource(src) {
 
 const KEYWORDS = new Set(["let-syntax", "lambda", "quote", "syntax"]);
 const PRIMS = new Set([
-  "SE", "MKS", "+", "-", "CONS", "CAR", "CDR", "LIST",
+  "syntax->datum", "datum->syntax", "+", "-", "CONS", "CAR", "CDR", "LIST",
   "LOCAL-VALUE", "LOCAL-EXPAND", "LOCAL-BINDER",
   "BOX", "UNBOX", "SET-BOX!", "NEW-DEFS", "DEF-BIND",
 ]);

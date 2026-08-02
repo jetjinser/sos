@@ -18,7 +18,7 @@
 (define (datum s) (plain (string->stx s)))
 
 (define long-input
-  "(lambda z (let-syntax x (lambda s (MKS (LIST (syntax lambda) (syntax z) (CAR (CDR (SE s)))) (syntax here))) (x z)))")
+  "(lambda z (let-syntax x (lambda s (datum->syntax (syntax here) (LIST (syntax lambda) (syntax z) (CAR (CDR (syntax->datum s)))))) (x z)))")
 
 (test-assert "preserves-semantics"
   (equal? (datum long-input) (datum (format-source long-input))))
@@ -56,8 +56,8 @@
   (format-source "(syntax (lambda (x) x))"))
 
 (test-equal "compact-app-stays-inline"
-  "(CAR (CDR (SE s)))"
-  (format-source "(CAR (CDR (SE s)))"))
+  "(CAR (CDR (syntax->datum s)))"
+  (format-source "(CAR (CDR (syntax->datum s)))"))
 
 (test-assert "quote-never-breaks"
   (let ((f (format-source

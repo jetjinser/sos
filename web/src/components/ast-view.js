@@ -5,7 +5,7 @@ import { ctxScopes } from "../lib/sexpr.js";
 const KEYWORDS = new Set([
   "fun", "var", "app", "list-val",
   "lambda", "quote", "syntax", "let-syntax",
-  "+", "-", "CONS", "CAR", "CDR", "LIST", "SE", "MKS",
+  "+", "-", "CONS", "CAR", "CDR", "LIST", "syntax->datum", "datum->syntax",
   "LOCAL-VALUE", "LOCAL-EXPAND", "LOCAL-BINDER",
   "BOX", "UNBOX", "SET-BOX!", "NEW-DEFS", "DEF-BIND",
 ]);
