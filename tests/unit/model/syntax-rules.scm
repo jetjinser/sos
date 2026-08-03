@@ -42,4 +42,20 @@
   (term=? (run "(let-syntax w (syntax-rules () ((_ x ...) (CAR (LIST x ...)))) (w 7 8))")
           '(app CAR (app LIST 7 8))))
 
+(test-assert "multi-clause-arity-1"
+  (term=? (run "(let-syntax f (syntax-rules () ((_ e) (LIST e)) ((_ e1 e2 ...) (CONS e1 (LIST e2 ...)))) (f 9))")
+          '(app LIST 9)))
+
+(test-assert "multi-clause-arity-many"
+  (term=? (run "(let-syntax f (syntax-rules () ((_ e) (LIST e)) ((_ e1 e2 ...) (CONS e1 (LIST e2 ...)))) (f 1 2 3))")
+          '(app CONS 1 (app LIST 2 3))))
+
+(test-assert "multi-clause-literal-match"
+  (term=? (run "(let-syntax g (syntax-rules (kw) ((_ kw x) (LIST kw x)) ((_ x) (LIST x))) (g kw 5))")
+          '(app LIST (var kw) 5)))
+
+(test-assert "multi-clause-literal-fallthrough"
+  (term=? (run "(let-syntax g (syntax-rules (kw) ((_ kw x) (LIST kw x)) ((_ x) (LIST x))) (g 5))")
+          '(app LIST 5)))
+
 (test-end "model-syntax-rules")

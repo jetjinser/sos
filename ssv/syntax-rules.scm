@@ -1,11 +1,13 @@
 ;;; ssv/syntax-rules.scm
 ;;; syntax-rules as a library macro built on the expander's syntax API.
-;;; Given a (syntax-rules (lit ...) (pattern template)) form, it compiles a
+;;; Given a (syntax-rules (lit ...) (pattern template) ...) form, it compiles a
 ;;; matcher transformer (lambda use ...) whose body deconstructs the use-site
 ;;; with syntax->datum/CAR/CDR and rebuilds the template with datum->syntax,
 ;;; so the hygiene primitives stay visible in the expansion trace.
-;;; Scope: a single clause; pattern variables and `_`; one trailing `var ...`
-;;; ellipsis that matches a suffix and splices it back into the template.
+;;; Clauses are tried in order: each non-final clause is guarded by its literal
+;;; checks (free-identifier=?) and, for a fixed-arity pattern, an arity check
+;;; (stx-len/=); the final clause is the catch-all.  A trailing `var ...`
+;;; matches a suffix and splices it back into the template.
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (ssv syntax-rules)
@@ -36,9 +38,9 @@
   (let loop ((f `(syntax->datum ,e)) (k n))
     (if (= k 0) f (loop `(CDR ,f) (- k 1)))))
 
-;;; Collect pattern variables with their index paths, skipping `_`, the
-;;; ellipsis marker `...`, and the ellipsis variable SKIP.
-(define (collect-vars p rpath acc skip)
+;;; Collect pattern variables with their index paths, skipping `_`, `...`, the
+;;; ellipsis variable EVAR, and the literals LITS.
+(define (collect-vars p rpath acc evar lits)
   (cond
     ((null? p) acc)
     ((pair? p)
@@ -49,13 +51,35 @@
           (let ((e (car lst)))
             (cond
               ((eq? e '...) (walk (cdr lst) (+ idx 1) acc))
-              ((and (symbol? e) (eq? e skip)) (walk (cdr lst) (+ idx 1) acc))
+              ((and (symbol? e) (eq? e evar)) (walk (cdr lst) (+ idx 1) acc))
+              ((and (symbol? e) (memq e lits)) (walk (cdr lst) (+ idx 1) acc))
               (else (walk (cdr lst) (+ idx 1)
-                          (collect-vars e (cons idx rpath) acc skip))))))
+                          (collect-vars e (cons idx rpath) acc evar lits))))))
          (else acc))))
     ((eq? p '_) acc)
     ((eq? p '...) acc)
+    ((and (symbol? p) (memq p lits)) acc)
     ((symbol? p) (cons (cons p (reverse rpath)) acc))
+    (else acc)))
+
+;;; Collect the literals' paths in the pattern, for guard generation.
+(define (collect-lits p rpath lits acc)
+  (cond
+    ((null? p) acc)
+    ((pair? p)
+     (let walk ((lst p) (idx 0) (acc acc))
+       (cond
+         ((null? lst) acc)
+         ((pair? lst)
+          (let ((e (car lst)))
+            (cond
+              ((eq? e '...) (walk (cdr lst) (+ idx 1) acc))
+              (else (walk (cdr lst) (+ idx 1)
+                          (collect-lits e (cons idx rpath) lits acc))))))
+         (else acc))))
+    ((eq? p '_) acc)
+    ((eq? p '...) acc)
+    ((and (symbol? p) (memq p lits)) (cons (cons p (reverse rpath)) acc))
     (else acc)))
 
 ;;; If the top-level pattern ends with (var ...), return (var . start-index).
@@ -99,21 +123,48 @@
     ((assq tmpl vars) => (lambda (e) (path-expr 'use (cdr e))))
     (else `(syntax ,tmpl))))
 
-;;; Compile a single (pattern template) clause into a matcher datum.
-(define (compile-clause clause)
+;;; Compile one clause to its template expression.
+(define (compile-one clause lits)
   (let* ((pat (car clause))
          (tmpl (cadr clause))
          (einfo (trailing-ellipsis pat))
          (evar (and einfo (car einfo)))
          (seq (and einfo (drop-expr 'use (cdr einfo))))
-         (vars (collect-vars pat '() '() evar)))
-    `(lambda use ,(template-expr tmpl vars evar seq))))
+         (vars (collect-vars pat '() '() evar lits)))
+    (template-expr tmpl vars evar seq)))
 
-;;; The syntax-rules transformer: reads the clause from the use-site and
-;;; returns the compiled matcher as syntax.
+;;; The check expressions for a non-final clause: an arity check for a
+;;; fixed-arity pattern, then the literal comparisons.
+(define (clause-checks clause lits)
+  (let ((pat (car clause)))
+    (append (if (trailing-ellipsis pat)
+                '()
+                (list `(= (stx-len use) ,(length pat))))
+            (map (lambda (e)
+                   `(free-identifier=? ,(path-expr 'use (cdr e))
+                                       (syntax ,(car e))))
+                 (collect-lits pat '() lits '())))))
+
+;;; Nest CHECKS around THEN, falling through to ELSE when any check fails.
+(define (wrap-checks checks then else)
+  (if (null? checks)
+      then
+      `(if ,(car checks) ,(wrap-checks (cdr checks) then else) ,else)))
+
+;;; Compile the clauses: try each in order, first whose checks hold wins, the
+;;; last clause is the catch-all.
+(define (compile-clauses lits clauses)
+  (cond
+    ((null? (cdr clauses)) (compile-one (car clauses) lits))
+    (else (wrap-checks (clause-checks (car clauses) lits)
+                       (compile-one (car clauses) lits)
+                       (compile-clauses lits (cdr clauses))))))
+
+;;; The syntax-rules transformer: reads the literals and clauses from the
+;;; use-site and returns the compiled matcher as syntax.
 (define (syntax-rules-transformer use-stx)
   (let* ((form (strip use-stx))
-         (matcher (compile-clause (caddr form))))
+         (matcher `(lambda use ,(compile-clauses (cadr form) (cddr form)))))
     (string->stx (call-with-output-string
                   (lambda (p) (write matcher p))))))
 

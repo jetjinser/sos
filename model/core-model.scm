@@ -203,6 +203,7 @@
 (define (prim? x)
   (memq x '(syntax->datum datum->syntax
             bound-identifier=? free-identifier=? generate-temporaries
+            if stx-len =
             + - CONS CAR CDR LIST
             LOCAL-VALUE LOCAL-EXPAND LOCAL-BINDER
             BOX UNBOX SET-BOX! NEW-DEFS DEF-BIND)))
@@ -212,10 +213,12 @@
     [('syntax->datum stx)       (stx-form stx)]
     [('datum->syntax id datum)  (make-stx datum (stx-ctx id) #f)]
     [('bound-identifier=? a b) (equal? (stx-ctx a) (stx-ctx b))]
+    [('stx-len stx)             (length (stx-form stx))]
     [('CAR (head . _))          head]
     [('CDR (_ . tail))          tail]
     [('+ a b)                   (+ a b)]
     [('- a b)                   (- a b)]
+    [('= a b)                   (= a b)]
     [('CONS a b)                (cons a b)]
     [('LIST . elts)             elts]
     [_ (error "delta: unknown primitive or bad arity" prim args)]))
@@ -261,6 +264,11 @@
     [('app 'generate-temporaries lst)
      (let*-values ([(v s1) (eval-ast lst store)])
        (gen-temps v s1))]
+    [('app 'if c t e)
+     (let*-values ([(cv s1) (eval-ast c store)])
+       (if cv
+           (eval-ast t s1)
+           (eval-ast e s1)))]
     [('app (? prim? rator) . rands)
      (let*-values ([(vals s1) (eval-ast* '() rands store)])
        (values (delta rator vals) s1))]
