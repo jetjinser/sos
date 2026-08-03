@@ -116,6 +116,23 @@ export class SsvApp extends LitElement {
       margin-bottom: 0.75rem;
     }
     .panel-label:not(:first-child) { margin-top: 1.15rem; }
+    .result-value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+      color: hsl(160 60% 26%);
+      background: hsl(160 45% 96%);
+      border: 1px solid hsl(160 30% 84%);
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      margin-bottom: 0.65rem;
+      word-break: break-all;
+    }
+    .result-value.stuck {
+      color: hsl(220 12% 55%);
+      background: hsl(220 16% 96%);
+      border-color: hsl(220 16% 86%);
+      font-style: italic;
+    }
     .error {
       grid-row: 1 / -1;
       place-self: center;
@@ -207,6 +224,25 @@ export class SsvApp extends LitElement {
     return this._trace?.stores?.[this._index] ?? null;
   }
 
+  // The reduced result (final-value): null means the expansion got stuck (e.g.
+  // a free variable), so there is no value to show.
+  _resultValue() {
+    if (!this._trace || !("final-value" in this._trace)) return nothing;
+    const fv = this._trace["final-value"];
+    if (fv === null)
+      return html`<div class="result-value stuck">no value (stuck)</div>`;
+    return html`<div class="result-value">= ${this._sexpr(fv)}</div>`;
+  }
+
+  _sexpr(v) {
+    if (v === null) return "null";
+    if (typeof v === "number") return String(v);
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return "(" + v.map((x) => this._sexpr(x)).join(" ") + ")";
+    if (typeof v === "object" && v && "form" in v) return this._sexpr(v.form);
+    return JSON.stringify(v);
+  }
+
   render() {
     if (this._loadError) return html`<div class="error">${this._loadError}</div>`;
 
@@ -241,6 +277,7 @@ export class SsvApp extends LitElement {
             ? html`<ssv-store-panel .store=${this._currentStore}></ssv-store-panel>`
             : nothing}
           <div class="panel-label">result</div>
+          ${this._resultValue()}
           <ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>
         </div>
         <div class="editor-panel">
