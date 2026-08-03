@@ -4,7 +4,8 @@
 ;;; matcher transformer (lambda use ...) whose body deconstructs the use-site
 ;;; with syntax->datum/CAR/CDR and rebuilds the template with datum->syntax,
 ;;; so the hygiene primitives stay visible in the expansion trace.
-;;; Step 5b scope: a single clause, pattern variables, `_`; no ellipsis yet.
+;;; Scope: a single clause; pattern variables and `_`; one trailing `var ...`
+;;; ellipsis that matches a suffix and splices it back into the template.
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (ssv syntax-rules)
@@ -30,9 +31,14 @@
       base
       (path-expr (nth-expr base (car path)) (cdr path))))
 
-;;; Collect pattern variables with their index paths.  `_` and non-symbols are
-;;; ignored; index 0 of the pattern is the macro keyword.
-(define (collect-vars p rpath acc)
+;;; (drop-expr e n): expression for e with its first n elements removed.
+(define (drop-expr e n)
+  (let loop ((f `(syntax->datum ,e)) (k n))
+    (if (= k 0) f (loop `(CDR ,f) (- k 1)))))
+
+;;; Collect pattern variables with their index paths, skipping `_`, the
+;;; ellipsis marker `...`, and the ellipsis variable SKIP.
+(define (collect-vars p rpath acc skip)
   (cond
     ((null? p) acc)
     ((pair? p)
@@ -40,28 +46,68 @@
        (cond
          ((null? lst) acc)
          ((pair? lst)
-          (walk (cdr lst) (+ idx 1)
-                (collect-vars (car lst) (cons idx rpath) acc)))
+          (let ((e (car lst)))
+            (cond
+              ((eq? e '...) (walk (cdr lst) (+ idx 1) acc))
+              ((and (symbol? e) (eq? e skip)) (walk (cdr lst) (+ idx 1) acc))
+              (else (walk (cdr lst) (+ idx 1)
+                          (collect-vars e (cons idx rpath) acc skip))))))
          (else acc))))
     ((eq? p '_) acc)
+    ((eq? p '...) acc)
     ((symbol? p) (cons (cons p (reverse rpath)) acc))
     (else acc)))
 
-;;; Build the template expression.  Every compound node is wrapped in
-;;; datum->syntax so the result is a proper stx tree; pattern variables become
-;;; access expressions, other symbols become (syntax ...) literals.
-(define (template-expr tmpl vars)
+;;; If the top-level pattern ends with (var ...), return (var . start-index).
+(define (trailing-ellipsis pat)
+  (let loop ((lst (cdr pat)) (idx 1))
+    (cond
+      ((or (null? lst) (null? (cdr lst))) #f)
+      ((and (symbol? (car lst)) (eq? (cadr lst) '...)) (cons (car lst) idx))
+      ((pair? (car lst)) #f)
+      (else (loop (cdr lst) (+ idx 1))))))
+
+;;; If the template list ends with (var ...), return (prefix . var).
+(define (trailing-splice tmpl)
+  (if (and (pair? tmpl) (pair? (cdr tmpl)) (eq? (car (reverse tmpl)) '...))
+      (let ((rev (reverse tmpl)))
+        (if (symbol? (cadr rev))
+            (cons (reverse (cddr rev)) (cadr rev))
+            #f))
+      #f))
+
+;;; CONS chain splicing SEQ after the rendered PREFIX elements.
+(define (splice-expr prefix seq vars evar)
+  (if (null? prefix)
+      seq
+      `(CONS ,(template-expr (car prefix) vars evar seq)
+             ,(splice-expr (cdr prefix) seq vars evar))))
+
+;;; Build the template expression.  VARS maps pattern variables to paths; EVAR
+;;; (with sequence expression SEQ) is the ellipsis variable.  Every compound
+;;; node is wrapped in datum->syntax; a list ending in (EVAR ...) splices SEQ.
+(define (template-expr tmpl vars evar seq)
   (cond
     ((null? tmpl) '(LIST))
     ((pair? tmpl)
-     `(datum->syntax use (LIST ,@(map (lambda (e) (template-expr e vars)) tmpl))))
+     (let ((sp (trailing-splice tmpl)))
+       (if (and sp (eq? (cdr sp) evar))
+           `(datum->syntax use ,(splice-expr (car sp) seq vars evar))
+           `(datum->syntax use
+                           (LIST ,@(map (lambda (e) (template-expr e vars evar seq))
+                                        tmpl))))))
     ((assq tmpl vars) => (lambda (e) (path-expr 'use (cdr e))))
     (else `(syntax ,tmpl))))
 
 ;;; Compile a single (pattern template) clause into a matcher datum.
 (define (compile-clause clause)
-  (let ((vars (collect-vars (car clause) '() '())))
-    `(lambda use ,(template-expr (cadr clause) vars))))
+  (let* ((pat (car clause))
+         (tmpl (cadr clause))
+         (einfo (trailing-ellipsis pat))
+         (evar (and einfo (car einfo)))
+         (seq (and einfo (drop-expr 'use (cdr einfo))))
+         (vars (collect-vars pat '() '() evar)))
+    `(lambda use ,(template-expr tmpl vars evar seq))))
 
 ;;; The syntax-rules transformer: reads the clause from the use-site and
 ;;; returns the compiled matcher as syntax.

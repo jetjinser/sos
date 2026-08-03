@@ -111,8 +111,11 @@
 (check "core/syntax-rules-twice" core-run
        (string->stx "(let-syntax twice (syntax-rules () ((_ e) (CONS e e))) (twice 3))")
        '(app CONS 3 3))
+(check "core/syntax-rules-ellipsis" core-run
+       (string->stx "(let-syntax my-list (syntax-rules () ((_ x ...) (LIST x ...))) (my-list 1 2 3))")
+       '(app LIST 1 2 3))
 
 (if (pair? failed)
     (error "model Wasm tests failed" (reverse failed))
     '(all-model-tests-pass (core . 5) (phases . 7) (local . 11) (defs . 15)
-                           (syntax-rules . 2)))
+                           (syntax-rules . 3)))

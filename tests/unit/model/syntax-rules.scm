@@ -30,4 +30,16 @@
   (term=? (run "(let-syntax inc (syntax-rules () ((_ n) (+ n 1))) (inc 4))")
           '(app + 4 1)))
 
+(test-assert "ellipsis-splice"
+  (term=? (run "(let-syntax my-list (syntax-rules () ((_ x ...) (LIST x ...))) (my-list 1 2 3))")
+          '(app LIST 1 2 3)))
+
+(test-assert "ellipsis-empty"
+  (term=? (run "(let-syntax my-list (syntax-rules () ((_ x ...) (LIST x ...))) (my-list))")
+          '(app LIST)))
+
+(test-assert "ellipsis-nested"
+  (term=? (run "(let-syntax w (syntax-rules () ((_ x ...) (CAR (LIST x ...)))) (w 7 8))")
+          '(app CAR (app LIST 7 8))))
+
 (test-end "model-syntax-rules")
