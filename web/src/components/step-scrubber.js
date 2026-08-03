@@ -1,6 +1,19 @@
 import { LitElement, html, css, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 
+// Structural expansion bookkeeping (id/app and the trivial value rules) drowns
+// out the meaningful steps in a syntax-rules trace.  A step is "key" if it is a
+// hygiene op, a binder/macro rule, or an identifier resolving to a binder.
+const NOISE_RULES = new Set([
+  "app", "syntax", "quote", "literal", "stops", "value", "fun-app", "prim-app",
+]);
+
+export function isKeyStep(step) {
+  if (step.type === "op") return true;
+  if (step.rule === "id") return !!(step.info && "tvar" in step.info);
+  return !NOISE_RULES.has(step.rule);
+}
+
 // A video-editor style timeline for the expansion trace.  Each step is a clip
 // (rules tall + cool, ops short + warm) labelled with its name — full when the
 // clip is wide, elided when dense.  A playhead glides across; click to seek,
@@ -14,6 +27,7 @@ export class SsvStepScrubber extends LitElement {
     steps: { type: Array },
     index: { type: Number },
     playing: { type: Boolean },
+    focusKey: { type: Boolean },
     _hover: { state: true },
     _dragging: { state: true },
     _zoom: { state: true },
@@ -66,6 +80,11 @@ export class SsvStepScrubber extends LitElement {
       box-shadow: 0 0 0 1px hsl(0 0% 100%), 0 1px 8px color-mix(in oklab, var(--fg) 55%, transparent);
     }
     .seg.cur .name { color: #fff; }
+    /* key-step focus: structural id/app clips shrink back so the binder/macro
+       rules and hygiene ops stand out */
+    .seg.rule.minor { height: 11px; }
+    .seg.rule.minor:not(.cur) { opacity: 0.3; filter: saturate(0.35); }
+    .seg.rule.minor .name { display: none; }
 
     /* ---- playhead: a lone marker above the strip — the lit clip below
        already carries the position, so no line through the clips ---- */
@@ -133,8 +152,29 @@ export class SsvStepScrubber extends LitElement {
       from { opacity: 0; transform: translateY(3px); }
       to   { opacity: 1; transform: none; }
     }
-    .zoom-badge {
+    .r-right {
       margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
+      flex-shrink: 0;
+    }
+    .focus-toggle {
+      font-family: inherit; font-size: 0.6rem; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 2px 9px;
+      border: 1px solid hsl(220 20% 82%);
+      border-radius: 10px;
+      background: hsl(220 30% 97%);
+      color: hsl(220 25% 42%);
+      cursor: pointer;
+      transition: background-color 120ms ease, border-color 120ms ease,
+                  color 120ms ease;
+    }
+    .focus-toggle:hover { background: hsl(220 45% 93%); border-color: hsl(220 35% 68%); }
+    .focus-toggle.on {
+      background: hsl(221 58% 44%); border-color: hsl(221 58% 40%);
+      color: #fff;
+    }
+    .zoom-badge {
       flex-shrink: 0;
       font-family: inherit; font-size: 0.6rem; font-weight: 600;
       font-variant-numeric: tabular-nums;
@@ -157,6 +197,7 @@ export class SsvStepScrubber extends LitElement {
     this.steps = [];
     this.index = 0;
     this.playing = false;
+    this.focusKey = false;
     this._hover = null;
     this._dragging = false;
     this._zoom = 1;
@@ -249,9 +290,10 @@ export class SsvStepScrubber extends LitElement {
 
   _seg(step, i) {
     const isRule = step.type === "rule";
+    const minor = this.focusKey && !isKeyStep(step);
     const state = i === this.index ? "cur" : i > this.index ? "unplayed" : "";
     const name = isRule ? step.rule : step.op;
-    return html`<div class="seg ${isRule ? "rule" : "op"} ${state}"
+    return html`<div class="seg ${isRule ? "rule" : "op"}${minor ? " minor" : ""} ${state}"
                      @mouseenter=${() => { if (!this._dragging) this._hover = i; }}>
       <span class="name">${name}</span>
     </div>`;
@@ -268,13 +310,24 @@ export class SsvStepScrubber extends LitElement {
           ? keyed(i, this._stepInfo(step, i, n))
           : html`<span class="r-empty">—</span>`}
       </div>
-      ${zoomed
-        ? html`<button class="zoom-badge" @click=${this._resetZoom}
-                       title="double-click the track to reset">
-            ${this._zoom.toFixed(1)}× · ${start + 1}–${end} / ${n}
-          </button>`
-        : nothing}
+      <div class="r-right">
+        <button class="focus-toggle ${this.focusKey ? "on" : ""}"
+                @click=${this._toggleFocus}
+                title="step through key steps only (skip id/app bookkeeping)">key</button>
+        ${zoomed
+          ? html`<button class="zoom-badge" @click=${this._resetZoom}
+                         title="double-click the track to reset">
+              ${this._zoom.toFixed(1)}× · ${start + 1}–${end} / ${n}
+            </button>`
+          : nothing}
+      </div>
     </div>`;
+  }
+
+  _toggleFocus() {
+    this.dispatchEvent(new CustomEvent("focus-change", {
+      detail: { focus: !this.focusKey }, bubbles: true, composed: true,
+    }));
   }
 
   _stepInfo(step, i, n) {

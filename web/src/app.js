@@ -7,7 +7,7 @@ import "./components/step-controls.js";
 import "./components/source-view.js";
 import "./components/feature-bar.js";
 import "./components/step-detail.js";
-import "./components/step-scrubber.js";
+import { isKeyStep } from "./components/step-scrubber.js";
 import "./components/step-compare.js";
 import "./components/ast-view.js";
 
@@ -34,6 +34,7 @@ export class SsvApp extends LitElement {
     _model: { state: true },
     _features: { state: true },
     _view: { state: true },
+    _focusKey: { state: true },
   };
 
   static styles = css`
@@ -179,6 +180,7 @@ export class SsvApp extends LitElement {
     this._model = "core";
     this._features = [];
     this._view = "source";
+    this._focusKey = false;
   }
 
   async connectedCallback() {
@@ -256,6 +258,7 @@ export class SsvApp extends LitElement {
           .index=${this._index}
           .playing=${this._playing}
           .speed=${this._speed}
+          .focusKey=${this._focusKey}
           @step-to=${this._onStepTo}
           @play-toggle=${this._onPlayToggle}
           @speed-change=${this._onSpeed}></ssv-step-controls>
@@ -265,7 +268,9 @@ export class SsvApp extends LitElement {
       <ssv-step-scrubber .steps=${this._trace?.steps ?? []}
                          .index=${this._index}
                          .playing=${this._playing}
-                         @step-to=${this._onStepTo}></ssv-step-scrubber>
+                         .focusKey=${this._focusKey}
+                         @step-to=${this._onStepTo}
+                         @focus-change=${this._onFocusChange}></ssv-step-scrubber>
 
       <div class="main">
         <div class="side">
@@ -355,8 +360,12 @@ export class SsvApp extends LitElement {
     }
     try {
       this._trace = runModel(this._model, this._src);
-      const n = this._trace?.steps?.length ?? 0;
+      const steps = this._trace?.steps ?? [];
+      const n = steps.length;
       this._index = n > 0 ? n - 1 : 0;
+      // Default to key-step focus when structural noise dominates the trace.
+      const noise = steps.filter((s) => !isKeyStep(s)).length;
+      this._focusKey = n > 0 && noise * 2 > n;
       this._runError = null;
     } catch (err) {
       this._trace = null;
@@ -366,6 +375,19 @@ export class SsvApp extends LitElement {
 
   _onStepTo(e) {
     this._index = e.detail.index;
+  }
+
+  _onFocusChange(e) {
+    this._focusKey = e.detail.focus;
+  }
+
+  // Index of the next key step in direction dir (+1/-1), or i if there is none.
+  _nextKey(i, dir) {
+    const steps = this._trace?.steps ?? [];
+    const n = steps.length;
+    let j = i + dir;
+    while (j >= 0 && j < n && !isKeyStep(steps[j])) j += dir;
+    return j >= 0 && j < n ? j : i;
   }
 
   _onPlayToggle() {
@@ -386,12 +408,13 @@ export class SsvApp extends LitElement {
     this._stopTimer();
     this._timer = setInterval(() => {
       const n = this._trace?.steps?.length ?? 0;
-      if (this._index >= n - 1) {
+      const j = this._focusKey ? this._nextKey(this._index, 1) : this._index + 1;
+      if (j >= n || j === this._index) {
         this._playing = false;
         this._stopTimer();
         return;
       }
-      this._index++;
+      this._index = j;
     }, this._speed);
   }
 
@@ -408,9 +431,11 @@ export class SsvApp extends LitElement {
     if (e.composedPath().some((el) =>
         el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT"))
       return;
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const dir = e.key === "ArrowRight" ? 1 : -1;
+    const j = this._focusKey ? this._nextKey(this._index, dir) : this._index + dir;
     const n = this._trace?.steps?.length ?? 0;
-    if (e.key === "ArrowRight" && this._index < n - 1) this._index++;
-    else if (e.key === "ArrowLeft" && this._index > 0) this._index--;
+    if (j >= 0 && j < n) this._index = j;
   }
 }
 

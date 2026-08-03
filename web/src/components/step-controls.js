@@ -1,4 +1,5 @@
 import { LitElement, html, css } from "lit";
+import { isKeyStep } from "./step-scrubber.js";
 
 export class SsvStepControls extends LitElement {
   static properties = {
@@ -6,6 +7,7 @@ export class SsvStepControls extends LitElement {
     index: { type: Number },
     playing: { type: Boolean },
     speed: { type: Number },
+    focusKey: { type: Boolean },
   };
 
   static styles = css`
@@ -60,6 +62,7 @@ export class SsvStepControls extends LitElement {
     this.index = 0;
     this.playing = false;
     this.speed = 500;
+    this.focusKey = false;
   }
 
   render() {
@@ -95,10 +98,25 @@ export class SsvStepControls extends LitElement {
     }));
   }
 
-  _first() { this._emit(0); }
-  _prev() { this._emit(this.index - 1); }
-  _next() { this._emit(this.index + 1); }
-  _last() { this._emit(this.steps.length - 1); }
+  _first() { this._emit(this.focusKey ? this._edgeKey(1) : 0); }
+  _prev() { this._emit(this.focusKey ? this._nextKey(this.index, -1) : this.index - 1); }
+  _next() { this._emit(this.focusKey ? this._nextKey(this.index, 1) : this.index + 1); }
+  _last() { this._emit(this.focusKey ? this._edgeKey(-1) : this.steps.length - 1); }
+
+  _nextKey(i, dir) {
+    const n = this.steps.length;
+    let j = i + dir;
+    while (j >= 0 && j < n && !isKeyStep(this.steps[j])) j += dir;
+    return j >= 0 && j < n ? j : i;
+  }
+
+  // First (dir=1) or last (dir=-1) key step.
+  _edgeKey(dir) {
+    const n = this.steps.length;
+    let j = dir > 0 ? 0 : n - 1;
+    while (j >= 0 && j < n && !isKeyStep(this.steps[j])) j += dir;
+    return j >= 0 && j < n ? j : this.index;
+  }
 
   _togglePlay() {
     this.dispatchEvent(new CustomEvent("play-toggle", {
