@@ -20,6 +20,7 @@
             alloc-name alloc-scope
             prim? delta
             subst eval-ast
+            value-of stuck?
             parse
             expand
             init-store primitives-env
@@ -298,6 +299,46 @@
                     [(freshened) (stx-add (car stxs) scp)]
                     [(rest s2)   (gen-temps (cdr stxs) s1)])
         (values (cons freshened rest) s2))))
+
+;;; ----------------------------------------
+;;; Total evaluator (for displaying the reduced result)
+
+;;; Unlike eval-ast this never raises: a term that cannot be reduced to a value
+;;; (free variable, non-applicable operator) yields *stuck*.  It is only used
+;;; to show the value next to the expansion, never during expansion itself.
+(define *stuck* (list '*stuck*))
+
+(define (stuck? x) (eq? x *stuck*))
+
+(define (safe-delta prim vals)
+  (match (cons prim vals)
+    [('CAR (head . _))                  head]
+    [('CDR (_ . tail))                  tail]
+    [('+ (? number? a) (? number? b))   (+ a b)]
+    [('- (? number? a) (? number? b))   (- a b)]
+    [('CONS a b)                        (cons a b)]
+    [('LIST . elts)                     elts]
+    [_ *stuck*]))
+
+(define (value-of ast)
+  (match ast
+    [('app ('fun ('var bvar) body) rand . rands)
+     (let ((v (value-of rand)))
+       (if (stuck? v)
+           *stuck*
+           (value-of (subst body bvar v))))]
+    [('app (? prim? rator) . rands)
+     (let ((vals (map value-of rands)))
+       (if (any stuck? vals)
+           *stuck*
+           (safe-delta rator vals)))]
+    [('app rator . rands) *stuck*]
+    [('fun . rest) ast]
+    [('var v) *stuck*]
+    [('list-val lv)
+     (let ((vals (map value-of lv)))
+       (if (any stuck? vals) *stuck* `(list-val ,@vals)))]
+    [else ast]))
 
 ;;; ----------------------------------------
 ;;; Parse

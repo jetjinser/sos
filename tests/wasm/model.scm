@@ -10,6 +10,7 @@
              (local-model)
              (defs-model)
              (ssv source)
+             (ssv trace)
              (ssv syntax-rules)
              (tests unit model harness))
 
@@ -117,6 +118,14 @@
 (check "core/syntax-rules-multi-clause" core-run
        (string->stx "(let-syntax f (syntax-rules () ((_ e) (LIST e)) ((_ e1 e2 ...) (CONS e1 (LIST e2 ...)))) (f 1 2 3))")
        '(app CONS 1 (app LIST 2 3)))
+
+;;; reduced result (final-value) computed by the total evaluator
+(check "core/final-value"
+       (lambda (in)
+         (let ((fv (cdr (assq 'final-value (run-traced 'core in)))))
+           (if (stuck? fv) 'stuck fv)))
+       (string->stx "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))")
+       5)
 
 (if (pair? failed)
     (error "model Wasm tests failed" (reverse failed))
