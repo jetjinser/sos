@@ -12,13 +12,13 @@ import "./components/step-compare.js";
 import "./components/ast-view.js";
 
 const EXAMPLES = {
-  core: "(let-syntax x (lambda z (syntax (quote 2))) (x 1))",
+  core: "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))",
   phases:
-    "(lambda z (let-syntax x (lambda s (datum->syntax (syntax here) (LIST (syntax lambda) (syntax z) (CAR (CDR (syntax->datum s)))))) (x z)))",
+    "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))",
   local:
-    "(let-syntax q (lambda s (syntax (CAR 8))) (let-syntax x (lambda s (CAR (CDR (syntax->datum (LOCAL-EXPAND (CAR (CDR (syntax->datum s))) (LIST)))))) (x (q))))",
+    "(let-syntax my-list (syntax-rules () ((_ x ...) (LIST x ...))) (my-list 1 2 3))",
   defs:
-    "(let-syntax call (lambda s (datum->syntax (syntax here) (LIST (CAR (CDR (syntax->datum s)))))) (let-syntax p (lambda s (syntax 0)) (let-syntax q (lambda s ((lambda defs ((lambda ignored (datum->syntax (syntax here) (LIST (syntax lambda) (LOCAL-BINDER (CAR (CDR (syntax->datum (LOCAL-EXPAND (datum->syntax (syntax here) (LIST (syntax quote) (CAR (CDR (syntax->datum s))))) (LIST) defs))))) (LOCAL-EXPAND (CAR (CDR (CDR (syntax->datum s)))) (LIST (syntax call)) defs)))) (DEF-BIND defs (CAR (CDR (syntax->datum s)))))) (NEW-DEFS))) (q p (call p)))))",
+    "(let-syntax f (syntax-rules () ((_ e) (LIST e)) ((_ e1 e2 ...) (CONS e1 (LIST e2 ...)))) (f 1 2 3))",
 };
 
 export class SsvApp extends LitElement {

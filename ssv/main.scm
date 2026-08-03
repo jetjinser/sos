@@ -3,7 +3,7 @@
 ;;; bridge; run-model returns the trace JSON, format-src pretty-prints source.
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
-(use-modules (ssv source) (ssv trace) (ssv format))
+(use-modules (ssv source) (ssv trace) (ssv format) (ssv syntax-rules))
 
 (define (run-model model-name input-src)
   (trace->json (run-traced (string->symbol model-name)
