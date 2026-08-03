@@ -175,7 +175,8 @@ export class SsvApp extends LitElement {
       this._loading = false;
       this._loadError = this._diagnoseLoadError(e);
     }
-    this.addEventListener("keydown", this._onKey);
+    this._onKeyBound = this._onKeyBound || this._onKey.bind(this);
+    window.addEventListener("keydown", this._onKeyBound);
   }
 
   // Distinguish "the browser lacks a required feature" from "the build is
@@ -195,7 +196,7 @@ export class SsvApp extends LitElement {
     super.disconnectedCallback();
     this._stopTimer();
     clearTimeout(this._debounce);
-    this.removeEventListener("keydown", this._onKey);
+    window.removeEventListener("keydown", this._onKeyBound);
   }
 
   get _step() {
@@ -365,10 +366,14 @@ export class SsvApp extends LitElement {
   }
 
   _onKey(e) {
-    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+    // Don't hijack arrows while the user is editing in a text field; the
+    // composed path pierces shadow roots, which e.target alone does not.
+    if (e.composedPath().some((el) =>
+        el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT"))
+      return;
     const n = this._trace?.steps?.length ?? 0;
     if (e.key === "ArrowRight" && this._index < n - 1) this._index++;
-    if (e.key === "ArrowLeft" && this._index > 0) this._index--;
+    else if (e.key === "ArrowLeft" && this._index > 0) this._index--;
   }
 }
 
