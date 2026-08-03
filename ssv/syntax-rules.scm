@@ -20,6 +20,15 @@
   (let ((f (stx-form s)))
     (if (pair? f) (map strip f) f)))
 
+;;; Rebuild a stx tree with every span cleared.  The matcher is fresh syntax
+;;; (not part of the user's source), so its string->stx parse positions must
+;;; not leak into the source-span snapshots.
+(define (no-spans s)
+  (let ((f (stx-form s)))
+    (make-stx (if (pair? f) (map no-spans f) f)
+              (stx-ctx s)
+              #f)))
+
 ;;; (nth-expr e i): expression selecting the i-th element of the stx e.  The
 ;;; form produced by syntax->datum is itself stx-nested, so every descent must
 ;;; re-apply syntax->datum to the sub-stx.
@@ -165,7 +174,7 @@
 (define (syntax-rules-transformer use-stx)
   (let* ((form (strip use-stx))
          (matcher `(lambda use ,(compile-clauses (cadr form) (cddr form)))))
-    (string->stx (call-with-output-string
-                  (lambda (p) (write matcher p))))))
+    (no-spans (string->stx (call-with-output-string
+                            (lambda (p) (write matcher p)))))))
 
 (register-for-syntax! 'syntax-rules syntax-rules-transformer)
