@@ -345,7 +345,8 @@
                    [(scp-new s2)     (alloc-scope id s1)]
                    [(id-new)         (stx-add id scp-new)]
                    [(s3)             (store-bind s2 id-new nam-new)]
-                   [(transformer s4) (eval-ast (parse rhs s3) s3)]
+                   [(rhs-exp s-rhs)  (expand rhs (primitives-env) s3)]
+                   [(transformer s4) (eval-ast (parse rhs-exp s-rhs) s-rhs)]
                    [(env-new)        (env-extend env nam-new transformer)]
                    [(body-added)     (stx-add body scp-new)]
                    [(body-exp s5)    (expand body-added env-new s4)])

@@ -39,13 +39,13 @@
 ;;; core (5)
 (check "core/simple-macro"   core-run input-simple-macro 2)
 (check "core/reftrans-macro" core-run input-reftrans
-       '(fun (var z:0) (fun (var z:4) (var z:0))))
-(check "core/hyg-macro"      core-run input-hyg
        '(fun (var z:0) (fun (var z:6) (var z:0))))
+(check "core/hyg-macro"      core-run input-hyg
+       '(fun (var z:0) (fun (var z:8) (var z:0))))
 (check "core/thunk"          core-run input-thunk
-       '(app (app (fun (var a:2) (fun (var a:6) (app + (var a:2) 1))) 5) 0))
+       '(app (app (fun (var a:4) (fun (var a:8) (app + (var a:4) 1))) 5) 0))
 (check "core/get-identity"   core-run input-get-identity
-       '(fun (var a:4) (fun (var a:6) (var a:4))))
+       '(fun (var a:6) (fun (var a:8) (var a:6))))
 
 ;;; phases (7)
 (check "phases/simple-macro"   phases-run input-simple-macro 2)
