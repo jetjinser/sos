@@ -37,6 +37,7 @@
 
 (define (atom-str x)
   (cond
+   ((null? x) "()")
    ((symbol? x) (symbol->string x))
    ((number? x) (number->string x))
    ((boolean? x) (if x "#t" "#f"))

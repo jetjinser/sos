@@ -108,12 +108,26 @@
                   [(store3) (Sigma*-store s*3)])
       (values (eq? (ph-resolve ph va store3) (ph-resolve ph vb store3)) s*3)))
 
-   ;; generate-temporaries
+    ;; generate-temporaries
+    ((and (pair? ast) (eq? (car ast) 'app)
+          (eq? (cadr ast) 'generate-temporaries))
+     (let*-values ([(v s*2)     (loc-eval ph (caddr ast) maybe-scp env s*)]
+                   [(temps s*3) (ph-gen-temps ph v s*2)])
+       (values temps s*3)))
+
+   ;; if
    ((and (pair? ast) (eq? (car ast) 'app)
-         (eq? (cadr ast) 'generate-temporaries))
-    (let*-values ([(v s*2)     (loc-eval ph (caddr ast) maybe-scp env s*)]
-                  [(temps s*3) (ph-gen-temps ph v s*2)])
-      (values temps s*3)))
+         (eq? (cadr ast) 'if))
+    (let*-values ([(cv s*2) (loc-eval ph (caddr ast) maybe-scp env s*)])
+      (if cv
+          (loc-eval ph (cadddr ast) maybe-scp env s*2)
+          (loc-eval ph (list-ref ast 4) maybe-scp env s*2))))
+
+   ;; foreign (host-procedure) transformer
+   ((and (pair? ast) (eq? (car ast) 'app)
+         (procedure? (cadr ast)))
+    (let*-values ([(vals s*2) (loc-eval* ph '() (cddr ast) maybe-scp env s*)])
+      (values (apply (cadr ast) vals) s*2)))
 
    ;; primitive application
    ((and (pair? ast) (eq? (car ast) 'app)
@@ -207,7 +221,7 @@
                         [(id-new)      (ph-stx-add ph id scp-new)]
                         [(s3)          (ph-store-bind ph s2 id-new nam-new)]
                         [(s*rhs)       (make-Sigma* s3 '() '())]
-                        [(stx-exp s*4) (loc-expand (+ ph 1) rhs (primitives-env) s*rhs)]
+                         [(stx-exp s*4) (loc-expand (+ ph 1) rhs (for-syntax-env) s*rhs)]
                         [(s4)          (Sigma*-store s*4)]
                         [(s*eval)      (make-Sigma* s4 scps-p '())]
                         [(val-exp s*5) (loc-eval ph (ph-parse (+ ph 1) stx-exp s4)

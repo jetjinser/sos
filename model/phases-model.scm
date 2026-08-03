@@ -188,7 +188,7 @@
                          [(scp-new s2)     (alloc-scope id s1)]
                          [(id-new)         (ph-stx-add ph id scp-new)]
                          [(s3)             (ph-store-bind ph s2 id-new nam-new)]
-                         [(stx-exp s4)     (ph-expand (+ ph 1) rhs (primitives-env) '() s3)]
+                         [(stx-exp s4)     (ph-expand (+ ph 1) rhs (for-syntax-env) '() s3)]
                          [(transformer s5) (eval-ast (ph-parse (+ ph 1) stx-exp s4) s4)]
                          [(env-new)        (env-extend env nam-new transformer)]
                          [(body-added)     (ph-stx-add ph body scp-new)]

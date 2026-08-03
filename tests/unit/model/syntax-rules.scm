@@ -8,6 +8,9 @@
   #:use-module (srfi srfi-64)
   #:use-module (ice-9 receive)
   #:use-module (core-model)
+  #:use-module (phases-model)
+  #:use-module (local-model)
+  #:use-module (defs-model)
   #:use-module (ssv source)
   #:use-module (ssv syntax-rules)
   #:use-module (tests unit model harness))
@@ -17,6 +20,20 @@
 (define (run src)
   (receive (expanded store) (expand (string->stx src) (primitives-env) (init-store))
     (parse expanded store)))
+
+(define (run-phases src)
+  (receive (e s) (ph-expand 0 (string->stx src) (primitives-env) '() (init-store))
+    (ph-parse 0 e s)))
+
+(define (run-local src)
+  (receive (e s*) (loc-expand 0 (string->stx src) (primitives-env)
+                              (list (init-store) '() '()))
+    (ph-parse 0 e (car s*))))
+
+(define (run-defs src)
+  (receive (e s*) (defs-expand 0 (string->stx src) (primitives-env)
+                               (list (init-store) '() '()))
+    (ph-parse 0 e (car s*))))
 
 (test-assert "my-let"
   (term=? (run "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))")
@@ -57,5 +74,18 @@
 (test-assert "multi-clause-literal-fallthrough"
   (term=? (run "(let-syntax g (syntax-rules (kw) ((_ kw x) (LIST kw x)) ((_ x) (LIST x))) (g 5))")
           '(app LIST 5)))
+
+;;; Propagated to the phase-aware models.
+(define my-let-src
+  "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))")
+
+(test-assert "phases-my-let"
+  (term=? (run-phases my-let-src) '(app (fun (var a:8) (var a:8)) 5)))
+
+(test-assert "local-my-let"
+  (term=? (run-local my-let-src) '(app (fun (var a:8) (var a:8)) 5)))
+
+(test-assert "defs-my-let"
+  (term=? (run-defs my-let-src) '(app (fun (var a:8) (var a:8)) 5)))
 
 (test-end "model-syntax-rules")
