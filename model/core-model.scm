@@ -22,7 +22,8 @@
             subst eval-ast
             parse
             expand
-            init-store primitives-env))
+            init-store primitives-env
+            register-for-syntax! for-syntax-env))
 
 ;;; ----------------------------------------
 ;;; Data structures
@@ -263,6 +264,9 @@
     [('app (? prim? rator) . rands)
      (let*-values ([(vals s1) (eval-ast* '() rands store)])
        (values (delta rator vals) s1))]
+    [('app (? procedure? rator) . rands)
+     (let*-values ([(vals s1) (eval-ast* '() rands store)])
+       (values (apply rator vals) s1))]
     [('app rator . rands)
      (error "eval-ast: cannot apply" rator)]
     [('fun . rest) (values ast store)]
@@ -345,7 +349,7 @@
                    [(scp-new s2)     (alloc-scope id s1)]
                    [(id-new)         (stx-add id scp-new)]
                    [(s3)             (store-bind s2 id-new nam-new)]
-                   [(rhs-exp s-rhs)  (expand rhs (primitives-env) s3)]
+                   [(rhs-exp s-rhs)  (expand rhs (for-syntax-env) s3)]
                    [(transformer s4) (eval-ast (parse rhs-exp s-rhs) s-rhs)]
                    [(env-new)        (env-extend env nam-new transformer)]
                    [(body-added)     (stx-add body scp-new)]
@@ -399,3 +403,17 @@
 
 (define (primitives-env)
   '())
+
+;;; ----------------------------------------
+;;; For-syntax transformer registry
+;;; Library macros (e.g. syntax-rules) register themselves here; let-syntax
+;;; expands a transformer's rhs in this environment.
+
+(define *for-syntax-env* '())
+
+(define (register-for-syntax! name transformer)
+  (if (not (assq name *for-syntax-env*))
+      (set! *for-syntax-env* (cons (cons name transformer) *for-syntax-env*))))
+
+(define (for-syntax-env)
+  (append *for-syntax-env* (primitives-env)))

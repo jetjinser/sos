@@ -9,6 +9,8 @@
              (phases-model)
              (local-model)
              (defs-model)
+             (ssv source)
+             (ssv syntax-rules)
              (tests unit model harness))
 
 (define (core-run in)
@@ -102,6 +104,15 @@
 (check "defs/defs-local-macro"  defs-run input-defs-local-macro
        '(fun (var p:27) 13))
 
+;;; syntax-rules (library macro on the syntax API, core model)
+(check "core/syntax-rules-my-let" core-run
+       (string->stx "(let-syntax my-let (syntax-rules () ((_ (x v) body) ((lambda x body) v))) (my-let (a 5) a))")
+       '(app (fun (var a:8) (var a:8)) 5))
+(check "core/syntax-rules-twice" core-run
+       (string->stx "(let-syntax twice (syntax-rules () ((_ e) (CONS e e))) (twice 3))")
+       '(app CONS 3 3))
+
 (if (pair? failed)
     (error "model Wasm tests failed" (reverse failed))
-    '(all-model-tests-pass (core . 5) (phases . 7) (local . 11) (defs . 15)))
+    '(all-model-tests-pass (core . 5) (phases . 7) (local . 11) (defs . 15)
+                           (syntax-rules . 2)))
