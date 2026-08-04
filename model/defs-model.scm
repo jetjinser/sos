@@ -316,15 +316,21 @@
                    [(temps s*3) (ph-gen-temps ph v s*2)])
        (values temps s*3)))
 
-   ;; if
-   ((and (pair? ast) (eq? (car ast) 'app)
-         (eq? (cadr ast) 'if))
-    (let*-values ([(cv s*2) (defs-eval ph (caddr ast) maybe-scp env s*)])
-      (if cv
-          (defs-eval ph (cadddr ast) maybe-scp env s*2)
-          (defs-eval ph (list-ref ast 4) maybe-scp env s*2))))
+    ;; if
+    ((and (pair? ast) (eq? (car ast) 'app)
+          (eq? (cadr ast) 'if))
+     (let*-values ([(cv s*2) (defs-eval ph (caddr ast) maybe-scp env s*)])
+       (if cv
+           (defs-eval ph (cadddr ast) maybe-scp env s*2)
+           (defs-eval ph (list-ref ast 4) maybe-scp env s*2))))
 
-   ;; foreign (host-procedure) transformer
+    ;; syntax template
+    ((and (pair? ast) (eq? (car ast) 'tmpl))
+     (let ((result (eval-tmpl (cadr ast))))
+       (emit-rule 'tmpl ast result (Sigma*-store s*) env (list (cons 'phase ph)))
+       (values result s*)))
+
+    ;; foreign (host-procedure) transformer
    ((and (pair? ast) (eq? (car ast) 'app)
          (procedure? (cadr ast)))
     (let*-values ([(vals s*2) (defs-eval* ph '() (cddr ast) maybe-scp env s*)])

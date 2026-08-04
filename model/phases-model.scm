@@ -132,9 +132,9 @@
          ((and (stx? first)
                (eq? (ph-resolve ph first store) 'quote))
           (stx-strip (cadr form)))
-         ((and (stx? first)
-               (eq? (ph-resolve ph first store) 'syntax))
-          (cadr form))
+          ((and (stx? first)
+                (eq? (ph-resolve ph first store) 'syntax))
+           `(tmpl ,(parse-tmpl (cadr form))))
          (else
           (cons 'app (map (lambda (s) (ph-parse ph s store)) form))))))
      ((or (number? form) (prim? form)) form)

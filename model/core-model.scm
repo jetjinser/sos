@@ -21,7 +21,7 @@
             prim? delta
             subst eval-ast
             value-of stuck?
-            parse
+            parse parse-tmpl eval-tmpl
             expand
             init-store primitives-env
             register-for-syntax! for-syntax-env))
@@ -250,6 +250,14 @@
              ,(subst (subst body bvar `(var ,fv)) var val)))]
     [('list-val . elts)
      `(list-val ,@(map (cut subst <> var val) elts))]
+    [('tvar s)
+     (if (and (stx? s) (eq? (stx-form s) var)) val ast)]
+    [('tlist s . elts)
+     `(tlist ,s ,@(map (cut subst <> var val) elts))]
+    [('tseq e)
+     `(tseq ,(subst e var val))]
+    [('tmpl t)
+     `(tmpl ,(subst t var val))]
     [ast ast]))
 
 (define (eval-ast ast store)
@@ -278,6 +286,8 @@
        (values (apply rator vals) s1))]
     [('app rator . rands)
      (error "eval-ast: cannot apply" rator)]
+    [('tmpl tast)
+     (values (eval-tmpl tast) store)]
     [('fun . rest) (values ast store)]
     [('var v)
      (error "eval-ast: unbound variable" v)]
@@ -299,6 +309,52 @@
                     [(freshened) (stx-add (car stxs) scp)]
                     [(rest s2)   (gen-temps (cdr stxs) s1)])
         (values (cons freshened rest) s2))))
+
+;;; ----------------------------------------
+;;; Syntax templates ((syntax ...) / #')
+;;;
+;;; parse turns (syntax tmpl) into (tmpl <tast>) where the template AST keeps
+;;; every source node: identifiers as (tvar <stx>), other atoms as (tlit <stx>),
+;;; compounds as (tlist <stx> <elt> ...), and `x ...` as (tseq <elt>).  subst
+;;; replaces the tvar positions of pattern variables with their matched stx
+;;; values; eval-tmpl then rebuilds the stx tree.  A tvar that survives subst
+;;; is a literal identifier of the template.
+
+(define (parse-tmpl stx)
+  (let ((form (stx-form stx)))
+    (cond
+      ((pair? form) `(tlist ,stx ,@(parse-tmpl-list form)))
+      ((symbol? form) `(tvar ,stx))
+      (else `(tlit ,stx)))))
+
+(define (parse-tmpl-list lst)
+  (cond
+    ((null? lst) '())
+    ((and (pair? (cdr lst))
+          (stx? (cadr lst))
+          (eq? (stx-form (cadr lst)) '...))
+     (cons `(tseq ,(parse-tmpl (car lst)))
+           (parse-tmpl-list (cddr lst))))
+    (else (cons (parse-tmpl (car lst))
+                (parse-tmpl-list (cdr lst))))))
+
+(define (eval-tmpl tast)
+  (match tast
+    [('tvar s) s]
+    [('tlit s) s]
+    [('tlist s . elts)
+     (make-stx (tmpl-elts elts) (stx-ctx s) (stx-span s))]
+    [val val]))
+
+(define (tmpl-elts elts)
+  (cond
+    ((null? elts) '())
+    ((and (pair? (car elts)) (eq? (caar elts) 'tseq))
+     (let ((v (eval-tmpl (cadar elts))))
+       (append (if (stx? v) (list v) v)
+               (tmpl-elts (cdr elts)))))
+    (else (cons (eval-tmpl (car elts))
+                (tmpl-elts (cdr elts))))))
 
 ;;; ----------------------------------------
 ;;; Total evaluator (for displaying the reduced result)
@@ -334,10 +390,11 @@
            (safe-delta rator vals)))]
     [('app rator . rands) *stuck*]
     [('fun . rest) ast]
+    [('tmpl t) ast]
     [('var v) *stuck*]
     [('list-val lv)
-     (let ((vals (map value-of lv)))
-       (if (any stuck? vals) *stuck* `(list-val ,@vals)))]
+      (let ((vals (map value-of lv)))
+        (if (any stuck? vals) *stuck* `(list-val ,@vals)))]
     [else ast]))
 
 ;;; ----------------------------------------
@@ -352,7 +409,7 @@
      `(fun (var ,(resolve id-arg store))
            ,(parse body store))]
     [((? (stx-is? 'quote)) body)  (stx-strip body)]
-    [((? (stx-is? 'syntax)) body) body]
+    [((? (stx-is? 'syntax)) body) `(tmpl ,(parse-tmpl body))]
     [(and (first . rest) form)
      (cons 'app (map (cut parse <> store) form))]
     [(and (or (? number?) (? prim?)) form) form]
