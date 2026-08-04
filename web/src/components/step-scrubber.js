@@ -6,6 +6,7 @@ import { keyed } from "lit/directives/keyed.js";
 // hygiene op, a binder/macro rule, or an identifier resolving to a binder.
 const NOISE_RULES = new Set([
   "app", "syntax", "quote", "literal", "stops", "value", "fun-app", "prim-app",
+  "tmpl",
 ]);
 
 export function isKeyStep(step) {

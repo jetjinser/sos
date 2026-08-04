@@ -4,9 +4,9 @@
 ;;; Breaking is deliberately aggressive for readability: binding forms (lambda,
 ;;; let-syntax) break as soon as a body or transformer subform is compound,
 ;;; (syntax ...) breaks around any compound expression, and other applications
-;;; break one arg per line unless short.  (syntax-rules ...) keeps its literals
-;;; list with the head and breaks each clause to its own line.  Quoted data
-;;; never breaks.
+;;; break one arg per line unless short.  (syntax-rules ...) and
+;;; (syntax-case ...) keep their literals (and subject) with the head and
+;;; break each clause to its own line.  Quoted data never breaks.
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (ssv format)
@@ -91,6 +91,10 @@
       (if (and (fits? flat indent) (<= (string-length flat) *compact*))
           flat
           (pp-syntax-rules (car args) (cdr args) indent)))
+     ((and (eq? head 'syntax-case) (pair? args) (pair? (cdr args)))
+      (if (and (fits? flat indent) (<= (string-length flat) *compact*))
+          flat
+          (pp-syntax-case (car args) (cadr args) (cddr args) indent)))
      ((and (fits? flat indent)
            (or (<= (string-length flat) *compact*) (all-atoms? args)))
       flat)
@@ -134,6 +138,20 @@
 (define (pp-syntax-rules literals clauses indent)
   (let ((nl (string-append "\n" (spaces (+ indent 2)))))
     (string-append "(syntax-rules " (pp literals (+ indent 14))
+                   (if (null? clauses)
+                       ")"
+                       (string-append nl
+                                      (string-join*
+                                       (map (lambda (c) (pp-clause c (+ indent 2))) clauses)
+                                       nl)
+                                      ")")))))
+
+;;; (syntax-case subject literals clause ...) — subject and literals stay
+;;; with the head, each clause breaks to its own line, indented by 2.
+(define (pp-syntax-case subject literals clauses indent)
+  (let ((nl (string-append "\n" (spaces (+ indent 2)))))
+    (string-append "(syntax-case " (pp subject indent)
+                   " " (pp literals indent)
                    (if (null? clauses)
                        ")"
                        (string-append nl

@@ -54,7 +54,7 @@ export function tokenizeSource(src) {
   return tokens;
 }
 
-const KEYWORDS = new Set(["let-syntax", "lambda", "quote", "syntax", "syntax-rules", "..."]);
+const KEYWORDS = new Set(["let-syntax", "lambda", "quote", "syntax", "syntax-rules", "syntax-case", "..."]);
 const PRIMS = new Set([
   "syntax->datum", "datum->syntax",
   "bound-identifier=?", "free-identifier=?", "generate-temporaries",
