@@ -390,6 +390,15 @@ export class SsvApp extends LitElement {
     return j >= 0 && j < n ? j : i;
   }
 
+  // First (dir=1) or last (dir=-1) key step.
+  _edgeKey(dir) {
+    const steps = this._trace?.steps ?? [];
+    const n = steps.length;
+    let j = dir > 0 ? 0 : n - 1;
+    while (j >= 0 && j < n && !isKeyStep(steps[j])) j += dir;
+    return j >= 0 && j < n ? j : this._index;
+  }
+
   _onPlayToggle() {
     this._playing = !this._playing;
     if (this._playing) this._startTimer();
@@ -426,16 +435,29 @@ export class SsvApp extends LitElement {
   }
 
   _onKey(e) {
-    // Don't hijack arrows while the user is editing in a text field; the
+    // Don't hijack keys while the user is editing in a text field; the
     // composed path pierces shadow roots, which e.target alone does not.
-    if (e.composedPath().some((el) =>
+    const path = e.composedPath();
+    if (path.some((el) =>
         el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT"))
       return;
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const dir = e.key === "ArrowRight" ? 1 : -1;
-    const j = this._focusKey ? this._nextKey(this._index, dir) : this._index + dir;
     const n = this._trace?.steps?.length ?? 0;
-    if (j >= 0 && j < n) this._index = j;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      const j = this._focusKey ? this._nextKey(this._index, dir) : this._index + dir;
+      if (j >= 0 && j < n) this._index = j;
+    } else if (e.key === " ") {
+      // A focused button keeps Space (its native activation key).
+      if (path.some((el) => el.tagName === "BUTTON")) return;
+      e.preventDefault();
+      this._onPlayToggle();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      this._index = this._focusKey ? this._edgeKey(1) : 0;
+    } else if (e.key === "End") {
+      e.preventDefault();
+      this._index = this._focusKey ? this._edgeKey(-1) : n - 1;
+    }
   }
 }
 
