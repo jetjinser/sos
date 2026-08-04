@@ -21,7 +21,7 @@
             prim? delta
             subst eval-ast
             value-of stuck?
-            parse parse-tmpl eval-tmpl
+            parse parse-tmpl parse-scase eval-tmpl scase-match
             expand
             init-store primitives-env
             register-for-syntax! for-syntax-env))
@@ -258,6 +258,10 @@
      `(tseq ,(subst e var val))]
     [('tmpl t)
      `(tmpl ,(subst t var val))]
+    [('scase subj lits . clauses)
+     `(scase ,(subst subj var val) ,lits
+             ,@(map (lambda (c) (list (car c) (subst (cadr c) var val)))
+                    clauses))]
     [ast ast]))
 
 (define (eval-ast ast store)
@@ -288,6 +292,9 @@
      (error "eval-ast: cannot apply" rator)]
     [('tmpl tast)
      (values (eval-tmpl tast) store)]
+    [('scase subj lits . clauses)
+     (let*-values ([(s s1) (eval-ast subj store)])
+       (scase-match s lits clauses s1 eval-ast (cut resolve <> s1)))]
     [('fun . rest) (values ast store)]
     [('var v)
      (error "eval-ast: unbound variable" v)]
@@ -357,6 +364,100 @@
                 (tmpl-elts (cdr elts))))))
 
 ;;; ----------------------------------------
+;;; syntax-case
+;;;
+;;; parse turns (syntax-case subj (lit ...) clause ...) into
+;;; (scase <subj-ast> <lit-stx ...> (<pattern-stx> <body-ast>) ...): the
+;;; subject and clause bodies are parsed upfront (pattern variables become
+;;; (var ...) references, templates become tmpl ASTs), while patterns and
+;;; literals stay raw stx for the matcher.  On a match the bound pattern
+;;; variables are subst-ed into the body before evaluation, which keeps the
+;;; substitution-based eval (and nested syntax-case) working unchanged.
+
+(define (parse-scase parse-fn form)
+  `(scase ,(parse-fn (cadr form))
+          ,(stx-form (caddr form))
+          ,@(map (lambda (clause)
+                   (let ((f (stx-form clause)))
+                     (list (car f) (parse-fn (cadr f)))))
+                 (cdddr form))))
+
+;;; (scase-match s lits clauses store eval-fn resolve-fn): try each clause in
+;;; order; on the first match, substitute the bindings into the body and
+;;; evaluate it with EVAL-FN.  RESOLVE-FN maps an identifier stx to its name
+;;; (literal comparison is free-identifier=? semantics).
+(define (scase-match s lits clauses store eval-fn resolve-fn)
+  (if (null? clauses)
+      (error "syntax-case: no matching clause")
+      (let ((bindings (match-pattern s (caar clauses) lits resolve-fn)))
+        (if bindings
+            (eval-fn (apply-subst (cadar clauses) bindings) store)
+            (scase-match s lits (cdr clauses) store eval-fn resolve-fn)))))
+
+(define (apply-subst ast bindings)
+  (if (null? bindings)
+      ast
+      (apply-subst (subst ast (caar bindings) (cdar bindings))
+                   (cdr bindings))))
+
+;;; Match S against PAT, returning an alist of pattern variable -> stx, or #f.
+;;; `_` is a wildcard; a literal matches by resolved name; a trailing (x ...)
+;;; in a list pattern binds x to the remaining suffix.
+(define (match-pattern s pat lits resolve-fn)
+  (let ((p (stx-form pat)))
+    (cond
+      ((eq? p '_) '())
+      ((lit-stx p lits) =>
+       (lambda (lit) (and (eq? (resolve-fn s) (resolve-fn lit)) '())))
+      ((symbol? p) (list (cons p s)))
+      ((pair? p)
+       (let ((f (stx-form s)))
+         (and (pair? f) (match-list f p lits resolve-fn))))
+      (else (and (equal? p (stx-form s)) '())))))
+
+(define (lit-stx p lits)
+  (cond
+    ((null? lits) #f)
+    ((eq? (stx-form (car lits)) p) (car lits))
+    (else (lit-stx p (cdr lits)))))
+
+(define (match-list fs ps lits resolve-fn)
+  (let ((te (trailing-ellipsis-ps ps)))
+    (if te
+        (let ((n (cdr te)))
+          (and (>= (length fs) n)
+               (let ((b (match-elems (take-stx fs n) (take-stx ps n) lits resolve-fn)))
+                 (and b (append b (list (cons (car te) (drop-stx fs n))))))))
+        (and (= (length fs) (length ps))
+             (match-elems fs ps lits resolve-fn)))))
+
+(define (match-elems fs ps lits resolve-fn)
+  (if (null? fs)
+      '()
+      (let ((b (match-pattern (car fs) (car ps) lits resolve-fn)))
+        (and b
+             (let ((r (match-elems (cdr fs) (cdr ps) lits resolve-fn)))
+               (and r (append b r)))))))
+
+;;; If the pattern list ends with (var ...), return (var . index-of-var).
+;;; Only a trailing ellipsis is recognized (nested ellipsis is not supported).
+(define (trailing-ellipsis-ps ps)
+  (let loop ((lst ps) (idx 0))
+    (cond
+      ((or (null? lst) (null? (cdr lst))) #f)
+      ((and (symbol? (stx-form (car lst)))
+            (eq? (stx-form (cadr lst)) '...))
+       (cons (stx-form (car lst)) idx))
+      ((pair? (stx-form (car lst))) #f)
+      (else (loop (cdr lst) (+ idx 1))))))
+
+(define (take-stx lst n)
+  (if (= n 0) '() (cons (car lst) (take-stx (cdr lst) (- n 1)))))
+
+(define (drop-stx lst n)
+  (if (= n 0) lst (drop-stx (cdr lst) (- n 1))))
+
+;;; ----------------------------------------
 ;;; Total evaluator (for displaying the reduced result)
 
 ;;; Unlike eval-ast this never raises: a term that cannot be reduced to a value
@@ -410,6 +511,10 @@
            ,(parse body store))]
     [((? (stx-is? 'quote)) body)  (stx-strip body)]
     [((? (stx-is? 'syntax)) body) `(tmpl ,(parse-tmpl body))]
+    [(? (lambda (f)
+          (and (pair? f) ((stx-is? 'syntax-case) (car f))))
+        form)
+     (parse-scase (lambda (s) (parse s store)) form)]
     [(and (first . rest) form)
      (cons 'app (map (cut parse <> store) form))]
     [(and (or (? number?) (? prim?)) form) form]

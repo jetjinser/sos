@@ -135,6 +135,9 @@
           ((and (stx? first)
                 (eq? (ph-resolve ph first store) 'syntax))
            `(tmpl ,(parse-tmpl (cadr form))))
+          ((and (stx? first)
+                (eq? (ph-resolve ph first store) 'syntax-case))
+           (parse-scase (lambda (s) (ph-parse ph s store)) form))
          (else
           (cons 'app (map (lambda (s) (ph-parse ph s store)) form))))))
      ((or (number? form) (prim? form)) form)

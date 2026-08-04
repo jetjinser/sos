@@ -119,6 +119,17 @@
        (string->stx "(let-syntax f (syntax-rules () ((_ e) (LIST e)) ((_ e1 e2 ...) (CONS e1 (LIST e2 ...)))) (f 1 2 3))")
        '(app CONS 1 (app LIST 2 3)))
 
+;;; syntax-case (eval-level primitive)
+(check "core/syntax-case-my-let" core-run
+       (string->stx "(let-syntax my-let (lambda use (syntax-case use () ((_ (x v) body) (syntax ((lambda x body) v))))) (my-let (a 5) a))")
+       '(app (fun (var a:6) (var a:6)) 5))
+(check "core/syntax-case-ellipsis" core-run
+       (string->stx "(let-syntax my-list (lambda use (syntax-case use () ((_ x ...) (syntax (LIST x ...))))) (my-list 1 2 3))")
+       '(app LIST 1 2 3))
+(check "local/syntax-case-my-let" local-run
+       (string->stx "(let-syntax my-let (lambda use (syntax-case use () ((_ (x v) body) (syntax ((lambda x body) v))))) (my-let (a 5) a))")
+       '(app (fun (var a:6) (var a:6)) 5))
+
 ;;; reduced result (final-value) computed by the total evaluator
 (check "core/final-value"
        (lambda (in)
@@ -130,4 +141,4 @@
 (if (pair? failed)
     (error "model Wasm tests failed" (reverse failed))
     '(all-model-tests-pass (core . 5) (phases . 7) (local . 11) (defs . 15)
-                           (syntax-rules . 4)))
+                           (syntax-rules . 4) (syntax-case . 3)))

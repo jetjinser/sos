@@ -330,6 +330,20 @@
        (emit-rule 'tmpl ast result (Sigma*-store s*) env (list (cons 'phase ph)))
        (values result s*)))
 
+    ;; syntax-case
+    ((and (pair? ast) (eq? (car ast) 'scase))
+     (let*-values ([(s s*2) (defs-eval ph (cadr ast) maybe-scp env s*)]
+                   [(result s*3)
+                    (scase-match s (caddr ast) (cdddr ast) (Sigma*-store s*2)
+                                 (lambda (a store)
+                                   (defs-eval ph a maybe-scp env
+                                              (make-Sigma* store
+                                                           (Sigma*-scps-p s*2)
+                                                           (Sigma*-scps-u s*2))))
+                                 (lambda (id) (ph-resolve ph id (Sigma*-store s*2))))])
+       (emit-rule 'scase ast result (Sigma*-store s*3) env (list (cons 'phase ph)))
+       (values result s*3)))
+
     ;; foreign (host-procedure) transformer
    ((and (pair? ast) (eq? (car ast) 'app)
          (procedure? (cadr ast)))
