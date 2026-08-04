@@ -59,6 +59,18 @@
   "(CAR (CDR (syntax->datum s)))"
   (format-source "(CAR (CDR (syntax->datum s)))"))
 
+(test-equal "short-syntax-rules-stays-inline"
+  "(syntax-rules (if) ((_ x) x))"
+  (format-source "(syntax-rules (if) ((_ x) x))"))
+
+(test-equal "syntax-rules-literals-with-head"
+  "(syntax-rules ()\n  ((_ (x v) body) ((lambda x body) v)))"
+  (format-source "(syntax-rules () ((_ (x v) body) ((lambda x body) v)))"))
+
+(test-equal "syntax-rules-clauses-break"
+  "(syntax-rules ()\n  ((_ a b) (CONS a b))\n  ((_ a b c) (LIST a b c)))"
+  (format-source "(syntax-rules () ((_ a b) (CONS a b)) ((_ a b c) (LIST a b c)))"))
+
 (test-assert "quote-never-breaks"
   (let ((f (format-source
             "(quote (aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee))")))

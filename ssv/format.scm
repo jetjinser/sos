@@ -4,7 +4,9 @@
 ;;; Breaking is deliberately aggressive for readability: binding forms (lambda,
 ;;; let-syntax) break as soon as a body or transformer subform is compound,
 ;;; (syntax ...) breaks around any compound expression, and other applications
-;;; break one arg per line unless short.  Quoted data never breaks.
+;;; break one arg per line unless short.  (syntax-rules ...) keeps its literals
+;;; list with the head and breaks each clause to its own line.  Quoted data
+;;; never breaks.
 ;;; SPDX-License-Identifier: LGPL-3.0-or-later
 
 (define-module (ssv format)
@@ -85,6 +87,10 @@
       (if (and (fits? flat indent) (all-atoms? args))
           flat
           (pp-generic form indent)))
+     ((and (eq? head 'syntax-rules) (pair? args))
+      (if (and (fits? flat indent) (<= (string-length flat) *compact*))
+          flat
+          (pp-syntax-rules (car args) (cdr args) indent)))
      ((and (fits? flat indent)
            (or (<= (string-length flat) *compact*) (all-atoms? args)))
       flat)
@@ -122,6 +128,24 @@
                                        (map (lambda (b) (pp b (+ indent 2))) body)
                                        nl)
                                       ")")))))
+
+;;; (syntax-rules literals clause ...) — literals stay with the head, each
+;;; clause breaks to its own line, indented by 2.
+(define (pp-syntax-rules literals clauses indent)
+  (let ((nl (string-append "\n" (spaces (+ indent 2)))))
+    (string-append "(syntax-rules " (pp literals (+ indent 14))
+                   (if (null? clauses)
+                       ")"
+                       (string-append nl
+                                      (string-join*
+                                       (map (lambda (c) (pp-clause c (+ indent 2))) clauses)
+                                       nl)
+                                      ")")))))
+
+;;; A clause stays on one line when it fits the width budget.
+(define (pp-clause stx indent)
+  (let ((flat (flat-node stx)))
+    (if (fits? flat indent) flat (pp stx indent))))
 
 ;;; Generic application: head then one argument per line, indented by 1.
 (define (pp-generic form indent)
