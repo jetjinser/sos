@@ -35,6 +35,7 @@ export class SsvApp extends LitElement {
     _features: { state: true },
     _view: { state: true },
     _focusKey: { state: true },
+    _resultAstOpen: { state: true },
   };
 
   static styles = css`
@@ -134,6 +135,19 @@ export class SsvApp extends LitElement {
       border-color: hsl(220 16% 86%);
       font-style: italic;
     }
+    .ast-toggle {
+      display: flex; align-items: center; gap: 5px;
+      font-family: inherit; font-size: 0.62rem; font-weight: 600;
+      letter-spacing: 0.04em;
+      color: hsl(220 15% 50%);
+      background: none; border: none;
+      padding: 2px 0;
+      margin-bottom: 0.4rem;
+      cursor: pointer;
+      transition: color 120ms ease;
+    }
+    .ast-toggle:hover { color: hsl(220 30% 35%); }
+    .ast-toggle .ast-caret { font-size: 0.72rem; line-height: 1; }
     .error {
       grid-row: 1 / -1;
       place-self: center;
@@ -181,6 +195,7 @@ export class SsvApp extends LitElement {
     this._features = [];
     this._view = "source";
     this._focusKey = false;
+    this._resultAstOpen = true;
   }
 
   async connectedCallback() {
@@ -283,7 +298,15 @@ export class SsvApp extends LitElement {
             : nothing}
           <div class="panel-label">result</div>
           ${this._resultValue()}
-          <ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>
+          ${this._trace
+            ? html`<button class="ast-toggle ${this._resultAstOpen ? "open" : ""}"
+                           @click=${() => (this._resultAstOpen = !this._resultAstOpen)}>
+                     <span class="ast-caret">${this._resultAstOpen ? "▾" : "▸"}</span> expanded ast
+                   </button>
+                   ${this._resultAstOpen
+                     ? html`<ssv-ast-view .ast=${this._trace?.["final-ast"] ?? null}></ssv-ast-view>`
+                     : nothing}`
+            : nothing}
         </div>
         <div class="editor-panel">
           <div class="view-tabs">
@@ -366,6 +389,9 @@ export class SsvApp extends LitElement {
       // Default to key-step focus when structural noise dominates the trace.
       const noise = steps.filter((s) => !isKeyStep(s)).length;
       this._focusKey = n > 0 && noise * 2 > n;
+      // With a reduced value the value is the headline, so fold the AST away;
+      // when stuck (no value) the AST is the only result, so keep it open.
+      this._resultAstOpen = (this._trace?.["final-value"] ?? null) === null;
       this._runError = null;
     } catch (err) {
       this._trace = null;
